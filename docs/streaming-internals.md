@@ -107,6 +107,70 @@ Players always start at the **lowest quality** and ramp up over 3-5 segments. Th
 - No initial buffering on slow networks
 - Gradual visual improvement ("Netflix warmup" effect)
 
+### Actual .m3u8 Manifest (What the Player Parses)
+
+**Master Playlist (`master.m3u8`):**
+```
+#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2"
+1080p/playlist.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720,CODECS="avc1.4d401f,mp4a.40.2"
+720p/playlist.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1400000,RESOLUTION=854x480,CODECS="avc1.4d401e,mp4a.40.2"
+480p/playlist.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,CODECS="avc1.42e00a,mp4a.40.2"
+360p/playlist.m3u8
+```
+
+**Media Playlist (`720p/playlist.m3u8`):**
+```
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:6
+#EXT-X-MEDIA-SEQUENCE:0
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXTINF:6.006,
+segment_000.ts
+#EXTINF:6.006,
+segment_001.ts
+#EXTINF:6.006,
+segment_002.ts
+#EXTINF:4.838,
+segment_199.ts
+#EXT-X-ENDLIST
+```
+
+**DRM-Encrypted Variant (adds `EXT-X-KEY`):**
+```
+#EXTM3U
+#EXT-X-KEY:METHOD=AES-128,URI="https://api.example.com/key/video_abc123",IV=0x00000000000000000000000000000001
+#EXTINF:6.006,
+segment_000.ts
+```
+
+### ABR Hysteresis (Prevents Quality Flickering)
+
+```
+RULE 1: Upgrade requires 2× headroom
+  Current: 720p (needs 3.5 Mbps)
+  Measured bandwidth: 7.2 Mbps (> 2 × 3.5 = 7.0)
+  → UPGRADE to 1080p ✅
+
+RULE 2: Downgrade threshold is lower (1.5×)
+  Current: 1080p (needs 6.5 Mbps)
+  Measured bandwidth: 8.0 Mbps (> 1.5 × 6.5 = 9.75? NO)
+  Measured bandwidth: 5.0 Mbps (< 6.5 Mbps)
+  → DOWNGRADE to 720p ⚠️
+
+RULE 3: Max 3 switches per 60 seconds
+  If player has already switched 3 times in the last minute
+  → LOCK current quality for remaining window
+
+RULE 4: Emergency drop overrides all rules
+  If buffer_seconds < 2.0
+  → Immediately drop to level 0 (360p), ignore hysteresis
+```
+
 ---
 
 ## 3. Client-Side Buffering Strategy

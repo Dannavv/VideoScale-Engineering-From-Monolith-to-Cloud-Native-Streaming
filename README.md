@@ -1,45 +1,93 @@
-# 🎬 VideoScale: Scaling from 1k to 100M Users
+# 🎬 VideoScale: Engineering a Global Streaming Platform
 
-This isn't a collection of streaming projects; it is a **system design artifact** that simulates the engineering journey of a streaming startup — from raw file serving to a globally distributed, DRM-protected, microservices-driven ecosystem.
+**This is not a backend project that happens to serve video.** This is a **streaming-first system** where every architectural decision — from storage partitioning to circuit breaker thresholds — exists to deliver `.ts` segments to a player buffer within 200ms, at any scale, anywhere in the world.
 
-Every phase documents what broke, what we built to fix it, and what new problems we introduced.
+The system evolves through 5 phases, each triggered by a specific failure at a specific scale. Every phase documents what broke, what we built to fix it, and what new problems we introduced.
 
 ---
 
-## 📊 Quantitative Pressure Model
+## 🎬 The Streaming Pipeline (System Spine)
 
-| Scale | Concurrent Users | Upload RPS | Playback RPS | DB CPU | Transcode Queue | Breaking Symptom |
-|---|---|---|---|---|---|---|
-| **Prototype** | 10 | 1/s | 10/s | 5% | 0 | Nothing breaks |
-| **Launch** | 1,000 | 10/s | 500/s | 25% | 2-3 jobs | TTFB > 800ms on cold starts |
-| **Growth** | 10,000 | 50/s | 5,000/s | 65% | 15-20 jobs | Upload latency > 2.8s. Transcoder falls behind |
-| **Viral** | 100,000 | 200/s | 50,000/s | 85% | 200+ jobs | DB lock contention. API 502s spike to 3% |
-| **Scale** | 1,000,000 | 500/s | 200,000/s | N/A (sharded) | Distributed | Single-region CDN saturates. Latency > 500ms for distant users |
-| **Global** | 10,000,000+ | 2,000/s | 1,000,000/s | N/A (multi-region) | Multi-region | Requires geo-routed CDN + edge transcoding |
+Everything in this repository serves **one goal**: get video segments from storage to the user's screen as fast and reliably as possible. HLS is the backbone.
 
-### What Breaks When (The Pressure Points)
+### How HLS Works (End-to-End)
+
+```mermaid
+graph LR
+    Upload["1. Upload (MP4)"] --> Transcode["2. Transcode (FFmpeg)"]
+    Transcode --> Segment["3. Segment (.ts chunks)"]
+    Segment --> Manifest["4. Manifest (.m3u8)"]
+    Manifest --> CDN["5. CDN Edge Cache"]
+    CDN --> ABR["6. ABR Switch (HLS.js)"]
+    ABR --> Buffer["7. Buffer → Decode → Render"]
+    
+    style Segment fill:#4CAF50,stroke:#333,color:#fff
+    style Manifest fill:#4CAF50,stroke:#333,color:#fff
+    style ABR fill:#2196F3,stroke:#333,color:#fff
+```
+
+### Step-by-Step: The Life of a Video
 
 ```
-At 1,000 users:
-  └─► Single server handles it. No issues.
+1. RAW UPLOAD
+   └─► User uploads sample.mp4 (H.264, 1080p, 2GB)
+   └─► API returns 202 Accepted immediately (async processing)
 
-At 10,000 users:
-  └─► Upload latency = 2.8s (target: < 500ms)
-  └─► Transcoder queue depth = 20 (target: < 5)
-  └─► FFmpeg CPU usage = 92% → API starved
+2. TRANSCODE (FFmpeg, server-side)
+   └─► 4 quality passes: 1080p@5Mbps / 720p@2.8Mbps / 480p@1.4Mbps / 360p@800kbps
+   └─► Each pass uses -maxrate and -bufsize for constrained VBR
+   └─► Output: 4 streams × ~200 segments each = ~800 .ts files
+   └─► Duration: ~8 min on 4-core VM (bottleneck at scale)
 
-At 100,000 users:
-  └─► DB CPU = 85% → write latency = 450ms (target: < 50ms)
-  └─► 3% of API requests return 502
-  └─► CDN cache miss rate = 12% (target: < 5%)
-  └─► Estimated monthly cost: $2,300
+3. SEGMENT (.ts chunk lifecycle)
+   └─► Each .ts = exactly 6 seconds of muxed H.264 video + AAC audio
+   └─► Segment sizes: 360p=0.7MB, 480p=1.1MB, 720p=2.2MB, 1080p=3.8MB
+   └─► Naming: /ab/c4/{video_id}/720p/seg_047.ts (hash-prefix for S3 IOPS)
+   └─► Lifecycle: HOT (7 days, SSD) → WARM (90 days, IA) → COLD (Glacier)
 
-At 1,000,000 users:
-  └─► DB lock contention → catalog writes fail intermittently
-  └─► Single-origin bandwidth saturated (10 Gbps NIC maxed)
-  └─► CDN egress cost = $23,000/month
-  └─► Must shard database and deploy multi-region
+4. MANIFEST (.m3u8 playlist generation)
+   └─► master.m3u8 (Master Playlist):
+       │  #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+       │  1080p/playlist.m3u8
+       │  #EXT-X-STREAM-INF:BANDWIDTH=2800000,RESOLUTION=1280x720
+       │  720p/playlist.m3u8
+   └─► 720p/playlist.m3u8 (Media Playlist):
+       │  #EXT-X-TARGETDURATION:6
+       │  #EXTINF:6.0,
+       │  seg_000.ts
+       │  #EXTINF:6.0,
+       │  seg_001.ts
+   └─► For DRM: #EXT-X-KEY:METHOD=AES-128,URI="/api/key/{video_id}"
+
+5. ABR SWITCHING (client-side, HLS.js decision engine)
+   └─► Startup: always loads lowest quality first (TTFF < 1.5s)
+   └─► Bandwidth estimation: moving average of last 3 segment download speeds
+   └─► Upgrade: if measured_bw > 2× next_level.bandwidth → switch up
+   └─► Emergency drop: if buffer_seconds < 5 → immediately switch to lowest
+   └─► Stability: max 3 quality switches per 60s (prevents flickering)
+   └─► Hysteresis: won't downgrade unless bandwidth drops below 1.5× current level
+
+6. PLAYER BUFFER STRATEGY
+   └─► VOD: target 30s buffer (absorbs Wi-Fi jitter)
+   └─► Live HLS: target 6s buffer (3 segments, minimizes broadcast delay)
+   └─► WebRTC: 0s buffer (frame-by-frame, true real-time)
+   └─► Rebuffer trigger: buffer < 2s → spinner shown
+   └─► Idle pause: buffer > 30s → stop downloading (save bandwidth)
+
+7. DECODE → RENDER
+   └─► .ts demuxed → H.264 NALUs + AAC frames
+   └─► Hardware decode (GPU) or software decode (CPU fallback)
+   └─► Rendered to <video> element at display refresh rate
 ```
+
+### Segment Request Volume at Scale
+
+| Viewers | Segments/sec | CDN Requests/min | Bandwidth (720p) | .ts files served/hour |
+|---|---|---|---|---|
+| 1,000 | 167/s | 10K/min | 2.8 Gbps | 600K |
+| 100,000 | 16,700/s | 1M/min | 280 Gbps | 60M |
+| 1,000,000 | 167,000/s | 10M/min | 2.8 Tbps | 600M |
+| 10,000,000 | 1,670,000/s | 100M/min | 28 Tbps | 6B |
 
 ---
 
@@ -49,156 +97,208 @@ At 1,000,000 users:
 
 ```mermaid
 graph LR
-    Client[Client App] -->|POST /upload| GW[API Gateway]
-    GW -->|Auth Check| Auth[Auth Service]
-    GW -->|Store Raw| S3[(Object Storage)]
-    S3 -->|Event| Queue[Redis Task Queue]
-    Queue -->|Dequeue| Worker[Transcoder Worker]
-    Worker -->|FFmpeg| Worker
-    Worker -->|PUT segments| S3cdn[(CDN Storage)]
-    Worker -->|Update status| DB[(Catalog DB)]
+    Client[Client App] -->|"POST /upload (SYNC)"| GW[API Gateway]
+    GW -->|"Auth Check (SYNC)"| Auth[Auth Service]
+    GW -->|"Store Raw (SYNC)"| S3[(Object Storage)]
+    S3 -.->|"Event (ASYNC)"| Queue[Redis Task Queue]
+    Queue -.->|"Dequeue (ASYNC)"| Worker["Transcoder ⚠️ BOTTLENECK"]
+    Worker -->|"FFmpeg → .ts + .m3u8"| Worker
+    Worker -->|"PUT segments"| S3cdn[(CDN Storage)]
+    Worker -->|"Update status"| DB[(Catalog DB)]
+    
+    style Worker fill:#ff6b6b,stroke:#333,color:#fff
 ```
 
 ### Playback Flow (Egress)
 
 ```mermaid
 graph LR
-    Player[Video Player] -->|GET master.m3u8| CDN[CDN Edge]
-    CDN -->|Cache HIT| Player
-    CDN -->|Cache MISS| Origin[API Gateway]
-    Origin -->|Signed URL Check| Auth[Auth Service]
-    Origin -->|Fetch Segment| S3[(Object Storage)]
-    S3 -->|.ts chunk| Origin
-    Origin -->|Cache + Respond| CDN
-    CDN -->|segment_001.ts| Player
-    Player -->|ABR Decision| Player
+    Player[HLS.js Player] -->|"GET master.m3u8 (SYNC)"| CDN[CDN Edge]
+    CDN -->|"Cache HIT → 0ms"| Player
+    CDN -->|"Cache MISS"| Origin["Origin ⚠️ PROTECT THIS"]
+    Origin -->|"Signed URL Check"| Auth[Auth Service]
+    Origin -->|"Fetch .ts"| S3[(Object Storage)]
+    S3 -->|"seg_047.ts"| Origin
+    Origin -->|"Cache + Respond"| CDN
+    CDN -->|"seg_047.ts → buffer"| Player
+    Player -->|"ABR: measure bw → pick quality"| Player
+    
+    style Origin fill:#ff6b6b,stroke:#333,color:#fff
 ```
 
-### Live Streaming Flow
+> **Solid lines** = synchronous (user waits). **Dashed lines** = asynchronous (background).
 
-```mermaid
-graph LR
-    OBS[OBS/Camera] -->|RTMP Push| Ingest[Nginx RTMP Module]
-    Ingest -->|Real-time Transcode| FFmpeg[FFmpeg]
-    FFmpeg -->|6s .ts segments| Disk[/tmp/hls/]
-    Disk -->|Nginx Static Serve| CDN[CDN Edge]
-    CDN -->|HLS .m3u8 + .ts| Player[HLS.js Player]
-    Player -->|ABR Switch| Player
+---
+
+## 📊 Quantitative Pressure Model
+
+| Scale | Users | Upload RPS | Playback RPS | DB CPU | Transcode Queue | Breaking Symptom |
+|---|---|---|---|---|---|---|
+| **Prototype** | 10 | 1/s | 10/s | 5% | 0 | Nothing breaks |
+| **Launch** | 1,000 | 10/s | 500/s | 25% | 2-3 jobs | TTFB > 800ms on cold starts |
+| **Growth** | 10,000 | 50/s | 5,000/s | 65% | 15-20 jobs | Upload latency > 2.8s |
+| **Viral** | 100,000 | 200/s | 50,000/s | 85% | 200+ jobs | DB lock contention. 502s at 3% |
+| **Scale** | 1,000,000 | 500/s | 200,000/s | Sharded | Distributed | Single-region CDN saturates |
+| **Global** | 10,000,000+ | 2,000/s | 1,000,000/s | Multi-region | Multi-region | Requires geo-routing |
+
+### What Breaks When
+
+```
+At 10,000 users:
+  └─► Upload latency = 2.8s (target: < 500ms)
+  └─► FFmpeg CPU = 92% → API response time degrades to 1.8s
+  └─► Transcoder queue depth = 20 → new videos wait 15+ minutes
+
+At 100,000 users:
+  └─► DB CPU = 85% → write latency = 450ms (target: < 50ms)
+  └─► 3% of API requests return 502 (overload)
+  └─► CDN cache miss = 12% → origin under pressure
+  └─► Monthly cost: $4,300
+
+At 1,000,000 users:
+  └─► DB lock contention → catalog writes fail
+  └─► Single-origin 10 Gbps NIC maxed out
+  └─► CDN egress = $23,000/month
+  └─► Must shard DB + deploy multi-region
 ```
 
 ---
 
-## 🎬 HLS Streaming Lifecycle (Center Stage)
+## 📈 Operational Baseline (SLIs / SLOs / Alerting)
 
-This is a **streaming-first** system. Every architectural decision serves the goal of delivering `.ts` segments to the player as fast and reliably as possible.
+### Service Level Objectives
 
-### The Life of a Video Segment
+| SLI | SLO Target | P95 | P99 | Alert (PagerDuty) | Measurement |
+|---|---|---|---|---|---|
+| **Availability** | **99.9%** (8.7h downtime/year) | — | — | < 99.5% over 1h window | Synthetic uptime probe |
+| Stream startup | < 2.0s | 1.4s | 2.8s | p95 > 3.0s | Client beacon |
+| Rebuffer ratio | < 0.5% | 0.3% | 0.8% | > 1.0% | Client beacon |
+| API latency | < 200ms | 120ms | 280ms | p99 > 500ms | Nginx access log |
+| Segment fetch (CDN) | < 100ms | 60ms | 150ms | p99 > 300ms | CDN edge log |
+| Upload success | > 99.5% | — | — | < 98% | API 2xx ratio |
+| CDN cache hit | > 95% | — | — | < 90% | `$upstream_cache_status` |
+| Error rate (5xx) | < 0.1% | — | — | > 1.0% | Nginx error log |
 
-```
-1. RAW UPLOAD
-   └─► User uploads sample.mp4 (H.264, 1080p, 2GB)
-
-2. TRANSCODE (FFmpeg)
-   └─► Split into 4 quality ladders: 1080p / 720p / 480p / 360p
-   └─► Each quality encoded with constrained bitrate (-maxrate, -bufsize)
-   └─► Output: 4 streams × ~200 segments each = ~800 .ts files
-
-3. SEGMENT (.ts chunk lifecycle)
-   └─► Each segment = exactly 6 seconds of video
-   └─► Segment naming: stream_0/seg_000.ts, stream_0/seg_001.ts, ...
-   └─► Segment size: 360p=0.7MB, 480p=1.1MB, 720p=2.2MB, 1080p=3.8MB
-   └─► Stored in S3 with hash-prefix keys for IOPS distribution
-
-4. MANIFEST (.m3u8 playlist generation)
-   └─► Master playlist: lists all quality levels with BANDWIDTH tags
-   └─► Media playlist (per quality): ordered list of .ts segment URLs
-   └─► EXT-X-TARGETDURATION: 6 (tells player the max segment length)
-   └─► For DRM: EXT-X-KEY tag points to license server URL
-
-5. ABR SWITCHING (client-side, HLS.js)
-   └─► Player downloads 1st segment at lowest quality (fast startup)
-   └─► Measures download speed: segment_size / download_time
-   └─► If bandwidth > 2× next level requirement → upgrade quality
-   └─► If buffer < 5 seconds → emergency drop to lowest quality
-   └─► Stability guard: max 3 quality switches per 60s
-
-6. BUFFER → DECODE → RENDER
-   └─► Browser maintains 15-30s buffer ahead of playhead
-   └─► Each .ts is demuxed (video + audio separated)
-   └─► H.264 decoded by hardware (GPU) or software (CPU)
-   └─► Frames rendered at display refresh rate (60fps)
-```
-
-### Segment Request Volume at Scale
-
-| Viewers | Segments/sec (6s chunks) | CDN Requests/min | Bandwidth (720p avg) |
-|---|---|---|---|
-| 1,000 | 167/s | 10,000/min | 2.8 Gbps |
-| 100,000 | 16,700/s | 1M/min | 280 Gbps |
-| 1,000,000 | 167,000/s | 10M/min | 2.8 Tbps |
-
----
-
-## 📈 Operational Baseline (SLIs / SLOs)
-
-| Signal (SLI) | Target (SLO) | Alert Threshold | Measured At |
-|---|---|---|---|
-| Stream startup time | < 2.0s (p95) | > 3.0s | Client-side beacon |
-| Rebuffer ratio | < 0.5% of watch time | > 1.0% | Client-side beacon |
-| API p99 latency | < 200ms | > 500ms | Nginx access log |
-| Transcode queue depth | < 5 jobs | > 20 jobs | Redis LLEN |
-| CDN cache hit ratio | > 95% | < 90% | Nginx $upstream_cache_status |
-| Upload success rate | > 99.5% | < 98% | API 2xx/total ratio |
-| Error rate (5xx) | < 0.1% | > 1.0% | Nginx error log |
-
-### Scaling Triggers
+### Autoscaling Triggers (Metric → Action)
 
 ```
-IF   CPU > 70% sustained 5min     → add API container (max 10)
-IF   transcode queue > 20         → add worker container (max 20)
-IF   WebRTC sessions > 500/server → reject new connections (503)
-IF   CDN miss rate > 10%          → pre-warm cache for trending content
-IF   p99 latency > 500ms          → enable request shedding (drop 10% lowest-priority)
+Metric: CPU > 70% sustained 5min
+  └─► Action: add API container (min 2, max 10)
+  └─► Cooldown: 3 minutes between scale events
+
+Metric: Redis LLEN(transcode_queue) > 20
+  └─► Action: add Celery worker (min 1, max 20)
+  └─► Alert: if queue > 100 → SEV-2 page
+
+Metric: WebRTC active_sessions > 500/server
+  └─► Action: reject new connections with 503
+  └─► Alert: if all servers > 80% → SEV-3
+
+Metric: CDN miss_rate > 10%
+  └─► Action: pre-warm cache for top 100 trending videos
+  └─► Runbook: check if new content was published without cache hint
+
+Metric: p99_latency > 500ms sustained 3min
+  └─► Action: enable load shedding (drop 10% of lowest-priority requests)
+  └─► Alert: SEV-2 page
 ```
 
-### Reliability Patterns (Implemented)
+### Reliability Patterns
 
 | Pattern | Where | Behavior |
 |---|---|---|
-| Exponential backoff | Transcoder → S3 | 0s → 2s → 4s → 8s → fail to DLQ |
+| Exponential backoff | Worker → S3 | 0s → 2s → 4s → 8s → Dead Letter Queue |
 | Circuit breaker | Worker → MinIO | Open after 5 failures/60s. Probe every 30s |
-| Idempotent workers | Celery tasks | `IF EXISTS output → skip` (no duplicate segments) |
+| Idempotent workers | Celery tasks | `IF EXISTS output → skip` (no duplicate .ts files) |
 | Rate limiting | Nginx gateway | 50 req/s per IP, 5 uploads/min per user |
 | Request collapsing | Nginx proxy_cache | `proxy_cache_lock on` (1 origin fetch per segment) |
+| Graceful degradation | DRM key server | If key vault down → serve 480p unencrypted |
 
 ---
 
 ## 💰 Cost at Scale
 
-| Scale | Compute | Storage (S3) | CDN Egress | Total/month | Per-User/month |
-|---|---|---|---|---|---|
-| 1K users | $50 | $12 | $30 | **$92** | $0.092 |
-| 10K users | $200 | $120 | $300 | **$620** | $0.062 |
-| 100K users | $800 | $500 | $3,000 | **$4,300** | $0.043 |
-| 1M users | $5,000 | $2,500 | $23,000 | **$30,500** | $0.031 |
+### Monthly Infrastructure Cost
 
-### Where the Money Goes
+| Scale | Compute | Storage | CDN Egress | Transcode | Total/month | Per-User |
+|---|---|---|---|---|---|---|
+| 1K | $50 | $12 | $30 | $10 | **$102** | $0.102 |
+| 10K | $200 | $120 | $300 | $80 | **$700** | $0.070 |
+| 100K | $800 | $500 | $3,000 | $400 | **$4,700** | $0.047 |
+| 1M | $5,000 | $2,500 | $23,000 | $3,000 | **$33,500** | $0.034 |
+| 10M | $30,000 | $15,000 | $180,000 | $20,000 | **$245,000** | $0.025 |
+
+### Cost Breakdown & Optimization
 
 ```
-At 100K users:
-  CDN Egress:   70% of total cost  ← THIS IS THE #1 COST DRIVER
-  Compute:      18% (transcoding + API)
-  Storage:      12% (4 quality levels × all videos)
+WHERE THE MONEY GOES (at 100K users):
+  CDN Egress:     64%  ← #1 COST DRIVER (every .ts served = bandwidth bill)
+  Compute:        17%  (API servers + transcoder workers)
+  Storage:        11%  (4 quality levels × all videos × 3 tiers)
+  Transcoding:     8%  (FFmpeg CPU hours — grows linearly with uploads)
 
-Cost Optimization Levers:
-  1. CDN cache hit > 95%        → saves 19× origin egress
-  2. Default to 480p (not 1080p) → halves avg bandwidth/user
-  3. Transcode only popular videos → skip 4K for <100 view videos
-  4. Storage tiering:
-     ├─► HOT  (SSD, S3 Standard):   last 7 days of segments
-     ├─► WARM (HDD, S3 IA):         8-90 day old segments
-     └─► COLD (S3 Glacier):         >90 days, restore in 5-12 hours
-  5. Spot instances for workers → 70% compute savings
+TRANSCODING COST EXPLOSION:
+  At 1K uploads/day × 8 min transcode each = 133 CPU-hours/day
+  At 10K uploads/day = 1,333 CPU-hours/day = $1,200/day on-demand
+  At 10K uploads/day + spot instances = $360/day (70% savings)
+
+STORAGE TIERING (applied in Project 5):
+  HOT  (S3 Standard, SSD):   last 7 days     → $0.023/GB/month
+  WARM (S3 IA, HDD):         8-90 days       → $0.0125/GB/month
+  COLD (S3 Glacier):         >90 days        → $0.004/GB/month
+  At 52TB total: all-hot = $1,196/mo → tiered = $484/mo (60% savings)
+
+MULTI-REGION REPLICATION COST:
+  Cross-region copy: $0.02/GB
+  Replicating 10TB trending content to 3 regions = $600/month
+  BUT: reduces p99 latency from 400ms → 80ms for 70% of global users
+```
+
+---
+
+## 🌍 Extreme Scale: 100M Users (The Netflix Problem)
+
+At **100 million monthly active users** with **10 million concurrent streams**, the system faces challenges that no single architecture can solve:
+
+```
+THE NUMBERS:
+  Concurrent streams:         10,000,000
+  Segments/sec globally:      1,670,000/s
+  CDN bandwidth:              28 Tbps (sustained)
+  CDN egress/month:           ~$1.8M
+  Storage (all qualities):    500+ PB
+  Transcode capacity needed:  50,000+ CPU-cores
+
+THE PROBLEMS:
+  1. Single-CDN failure → 10M users lose playback simultaneously
+  2. US-East S3 outage → all origin fetches fail globally
+  3. Submarine cable cut → 2M Asian users experience 3s+ latency
+  4. Viral event (World Cup) → 50M concurrent (5× normal peak)
+```
+
+### Solutions at 100M Scale
+
+| Problem | Solution | Implementation |
+|---|---|---|
+| CDN single point of failure | **Multi-CDN strategy** | Route via Cloudflare primary, Akamai failover. DNS-level health checks switch in <30s |
+| Regional S3 outage | **Cross-region replication** | S3 CRR to 3 regions. Read replica promotion in <60s |
+| Geographic latency | **Geo-routing** | Route53/Cloudflare geo-DNS sends users to nearest edge. Latency-based routing |
+| Viral traffic spike | **Edge transcoding** | Pre-position popular content at edge. Transcode at edge for <1s startup |
+| Cost explosion | **Reserved capacity** | 3-year reserved instances for baseline. Spot for burst. Negotiate CDN commits |
+| Regional outage | **Failover regions** | Active-active in 3 regions. If us-east-1 fails, eu-west-1 absorbs traffic in <60s |
+
+```
+MULTI-CDN ROUTING LOGIC:
+  1. User requests master.m3u8
+  2. DNS resolver checks user's geographic location
+  3. Route to nearest healthy CDN PoP:
+     ├─► NA users  → Cloudflare (primary) / Akamai (failover)
+     ├─► EU users  → Akamai (primary) / CloudFront (failover)
+     └─► APAC users → CloudFront (primary) / Cloudflare (failover)
+  4. If primary CDN health check fails (3 consecutive 5xx):
+     └─► DNS TTL = 30s → failover CDN receives traffic within 60s
+  5. Origin-shield: each CDN region has ONE designated origin-fetch node
+     └─► Prevents thundering herd on S3 during CDN failover
 ```
 
 ---
@@ -214,24 +314,24 @@ Before code, understand the pipeline: `Capture → Encode → Store → Process 
 - [**Operations Runbook: Metrics, Scaling, & Cost**](docs/operations-runbook.md) 🔧
 
 ### 🧩 Phase 1: From Scratch (< 1K Users)
-- **Project 1:** [Basic Video Streaming Server](projects/01-basic-streaming-server/README.md) - Mastery of `206 Partial Content` and Range Requests.
-- **Project 2:** [DIY HLS & Adaptive Bitrate](projects/02-build-your-own-hls/README.md) - Implementing ABR with FFmpeg and HLS.js.
+- **Project 1:** [Basic Video Streaming Server](projects/01-basic-streaming-server/README.md) — `206 Partial Content`, Range Requests, byte-level streaming.
+- **Project 2:** [DIY HLS & Adaptive Bitrate](projects/02-build-your-own-hls/README.md) — `.ts` segmentation, `.m3u8` manifests, ABR with HLS.js.
 
 ### ⚙️ Phase 2: The Monolith (1K → 10K Users)
-- **Project 3:** [Scalable Monolith](projects/03-scalable-backend/README.md) - Automated FastAPI pipeline with background workers and real-time dashboard.
-- **Project 4:** [Streaming Optimization](projects/04-streaming-optimization/README.md) - Nginx Edge Caching, Proxying, and HMAC-SHA256 Signed URLs.
+- **Project 3:** [Scalable Monolith](projects/03-scalable-backend/README.md) — Async transcoding pipeline, background workers, real-time status dashboard.
+- **Project 4:** [Streaming Optimization](projects/04-streaming-optimization/README.md) — Nginx edge caching, `proxy_cache_lock`, HMAC signed URLs.
 
 ### ☁️ Phase 3: Cloud-Native (10K → 100K Users)
-- **Project 5:** [Cloud-Native Emulator](projects/05-cloud-native-emulator/README.md) - Simulating AWS S3 (Minio), SQS (Redis), and Lambda (Celery).
-- **Project 6:** [Chaos & Resilience](projects/06-chaos-and-resilience/README.md) - Designing for failure with Chaos Monkey (Pumba) and retry logic.
+- **Project 5:** [Cloud-Native Emulator](projects/05-cloud-native-emulator/README.md) — S3 (MinIO), task queues (Redis/Celery), storage tiering.
+- **Project 6:** [Chaos & Resilience](projects/06-chaos-and-resilience/README.md) — Circuit breakers, retry storms, idempotent workers, Pumba chaos testing.
 
 ### 🎥 Phase 4: Real-Time & Security (100K → 1M Users)
-- **Project 7:** [Real-time Live Streaming](projects/07-live-streaming/README.md) - RTMP ingestion and Live HLS repackaging.
-- **Project 8:** [DRM & Content Protection](projects/08-drm-protection/README.md) - AES-128 Encryption and ClearKey License Servers.
-- **Project 9:** [Ultra-Low Latency (WebRTC)](projects/09-webrtc-low-latency/README.md) - Real-time communication with <500ms delay.
+- **Project 7:** [Real-time Live Streaming](projects/07-live-streaming/README.md) — RTMP ingestion, live `.ts` generation, glass-to-glass latency.
+- **Project 8:** [DRM & Content Protection](projects/08-drm-protection/README.md) — AES-128 segment encryption, key rotation, ClearKey license server.
+- **Project 9:** [Ultra-Low Latency (WebRTC)](projects/09-webrtc-low-latency/README.md) — Sub-500ms P2P streaming, SDP negotiation, stateful scaling wall.
 
 ### 🧱 Phase 5: Service Mesh (1M+ Users)
-- **Project 10:** [Microservices Migration](projects/10-microservices-migration/README.md) - Transitioning to a decoupled Service Mesh.
+- **Project 10:** [Microservices Migration](projects/10-microservices-migration/README.md) — Service isolation, API gateway, rate limiting, distributed tracing challenges.
 
 ---
 
@@ -239,21 +339,21 @@ Before code, understand the pipeline: `Capture → Encode → Store → Process 
 
 | Category | Requirement | Status |
 |---|---|---|
-| **Resilience** | Retry with exponential backoff | ✅ Implemented (Project 6) |
-| **Resilience** | Circuit breaker on storage calls | ✅ Implemented (Project 6) |
-| **Resilience** | Idempotent transcoding workers | ✅ Implemented (Project 5) |
-| **Security** | Rate limiting (per-IP + per-route) | ✅ Implemented (Project 10 Gateway) |
+| **Streaming** | HLS segmentation (.ts + .m3u8) with 4-level ABR | ✅ Implemented (Project 2) |
+| **Streaming** | Client-side ABR switching (HLS.js) | ✅ Implemented (Project 2) |
+| **Streaming** | Live RTMP-to-HLS repackaging | ✅ Implemented (Project 7) |
+| **Streaming** | Sub-500ms WebRTC delivery | ✅ Implemented (Project 9) |
+| **Streaming** | AES-128 encrypted segments | ✅ Implemented (Project 8) |
+| **Resilience** | Exponential backoff + DLQ | ✅ Implemented (Project 6) |
+| **Resilience** | Circuit breaker on storage | ✅ Implemented (Project 6) |
+| **Resilience** | Idempotent transcoding | ✅ Implemented (Project 5) |
+| **Security** | Rate limiting (per-IP + per-route) | ✅ Implemented (Project 10) |
 | **Security** | HMAC signed URLs with TTL | ✅ Implemented (Project 4) |
-| **Security** | AES-128 segment encryption | ✅ Implemented (Project 8) |
-| **Streaming** | HLS segmentation with ABR | ✅ Implemented (Project 2) |
-| **Streaming** | Adaptive bitrate switching | ✅ Implemented (HLS.js client) |
-| **Streaming** | Sub-second latency (WebRTC) | ✅ Implemented (Project 9) |
 | **Ops** | Health check endpoints | ✅ Implemented (all services) |
-| **Ops** | Structured logging | 📋 Documented (Runbook) |
-| **Ops** | Distributed tracing | 📋 Documented (Runbook) |
-| **Ops** | Autoscaling rules | 📋 Documented (Runbook) |
-| **Cost** | CDN cache optimization (>95% hit) | 📋 Documented (Runbook) |
-| **Cost** | Per-user cost model | 📋 Documented (Runbook) |
+| **Ops** | SLO targets defined (99.9%) | 📋 Documented |
+| **Ops** | Autoscaling triggers defined | 📋 Documented |
+| **Cost** | Storage tiering (hot/warm/cold) | 📋 Documented |
+| **Cost** | Multi-CDN failover strategy | 📋 Documented |
 
 ---
 
@@ -262,13 +362,11 @@ Before code, understand the pipeline: `Capture → Encode → Store → Process 
 - `docs/` — Deep dives: streaming internals, failure modeling, operations, FFmpeg
 - `projects/` — Hands-on implementations for each scaling phase
 - `samples/` — Centralized raw media assets
-- `assets/` — Architectural diagrams
 
 ---
 
-## 🛠️ Global Tech Stack
-- **Languages:** Node.js, Python (FastAPI)
-- **Engine:** FFmpeg, HLS.js, Aiortc (WebRTC)
-- **Storage:** Local FS, MinIO (S3-compatible)
-- **Brokers:** Redis (Queue + Pub/Sub)
-- **Infra:** Docker, Nginx (RTMP + Reverse Proxy), Pumba (Chaos)
+## 🛠️ Tech Stack
+- **Streaming:** FFmpeg, HLS.js, Nginx-RTMP, Aiortc (WebRTC)
+- **Backend:** Node.js, Python (FastAPI), Celery
+- **Storage:** Local FS, MinIO (S3-compatible), Redis
+- **Infra:** Docker, Nginx (reverse proxy + edge cache), Pumba (chaos)
