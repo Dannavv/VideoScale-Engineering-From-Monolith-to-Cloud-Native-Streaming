@@ -237,4 +237,103 @@ Savings: 73% cost reduction
 
 ---
 
-[Back to Roadmap](../README.md) | [FFmpeg Commands](ffmpeg-mastery.md) | [Failure Modeling](failure-modeling.md)
+## 5. Live vs VOD Streaming
+
+| Dimension | VOD (Video on Demand) | Live Streaming |
+|---|---|---|
+| **Segment source** | Pre-generated, stored in S3 | Generated in real-time by FFmpeg |
+| **Playlist type** | `#EXT-X-PLAYLIST-TYPE:VOD` (static) | `#EXT-X-PLAYLIST-TYPE:EVENT` (growing) |
+| **Playlist update** | Never changes after creation | Updated every segment duration (6s) |
+| **Seek support** | Full (any position in timeline) | Limited (only within live window) |
+| **Startup latency** | 1-2s (pre-cached segments) | 6-18s (3× segment duration minimum) |
+| **Buffer strategy** | 30s target (large safety margin) | 6s target (3 segments, minimize delay) |
+| **CDN cache** | High hit rate (segments never change) | Low hit rate (new segment every 6s) |
+| **Failure recovery** | Retry any segment indefinitely | Must skip ahead (can't wait, content is live) |
+| **Cost per viewer** | Low (cached) | High (origin requests every 6s) |
+
+### Live Playlist Window (Sliding Window)
+
+```
+Time = 00:00:30 (playlist shows last 3 segments):
+  #EXTINF:6.0,
+  segment_003.ts   ← oldest (will be removed next cycle)
+  #EXTINF:6.0,
+  segment_004.ts
+  #EXTINF:6.0,
+  segment_005.ts   ← newest (just generated)
+
+Time = 00:00:36 (next update, 6 seconds later):
+  #EXTINF:6.0,
+  segment_004.ts   ← segment_003 dropped from window
+  #EXTINF:6.0,
+  segment_005.ts
+  #EXTINF:6.0,
+  segment_006.ts   ← newly generated
+```
+
+---
+
+## 6. Segment Duration Decisions
+
+The choice of segment duration is a **critical architectural tradeoff**:
+
+| Duration | Startup Latency | CDN RPS (100K viewers) | Seek Precision | Best For |
+|---|---|---|---|---|
+| 1 second | 3s (3 segments) | 100,000/s | ±1s | Ultra-low latency live |
+| 2 seconds | 6s | 50,000/s | ±2s | Low-latency live |
+| **6 seconds** | **18s** | **16,700/s** | **±6s** | **Standard live + VOD (our choice)** |
+| 10 seconds | 30s | 10,000/s | ±10s | Bandwidth-constrained VOD |
+| 30 seconds | 90s | 3,300/s | ±30s | Long-form podcast/lecture |
+
+### Why We Chose 6 Seconds
+
+```
+TRADEOFF CALCULATION:
+  CDN RPS at 1s segments:  100K users = 100K req/sec → $2,800/hour CDN
+  CDN RPS at 6s segments:  100K users = 16.7K req/sec → $467/hour CDN
+  
+  Latency penalty: 18s vs 3s startup
+  Cost savings:    83% reduction in CDN request charges
+  
+  For VOD: 18s startup is acceptable (users expect loading screen)
+  For live: 18s is too slow → use 2s segments for live streams
+```
+
+---
+
+## 7. Queue-Based Transcode Pipeline
+
+The transcode workflow uses an asynchronous queue pattern to decouple upload from processing:
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│  FastAPI  │───►│  Redis   │───►│  Celery  │───►│  MinIO   │
+│  (API)   │    │  (Queue) │    │ (Worker) │    │  (S3)    │
+│          │    │          │    │          │    │          │
+│ Accepts  │    │ FIFO     │    │ FFmpeg   │    │ Stores   │
+│ upload,  │    │ ordered, │    │ transcode│    │ .ts +    │
+│ returns  │    │ persisted│    │ 4 passes │    │ .m3u8    │
+│ 202      │    │ on disk  │    │ per video│    │ segments │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘
+     │                │               │               │
+     │ SYNC           │ ASYNC         │ ASYNC         │ SYNC
+     ▼                ▼               ▼               ▼
+  User gets         Job waits      Worker pulls     Segments
+  job ID            in queue       next job         available
+  immediately       (max depth:    (concurrent:     for playback
+                    configurable)   4 per worker)
+```
+
+### Queue Semantics
+
+| Property | Configuration | Why |
+|---|---|---|
+| Ordering | FIFO | First upload = first transcoded |
+| Delivery | At-least-once | Worker ACKs after completion. If worker dies, job redelivered |
+| Idempotency | By video ID | `IF output exists → SKIP` prevents duplicate transcodes |
+| Dead Letter | After 3 attempts | Failed jobs moved to DLQ for manual investigation |
+| Visibility Timeout | 5 minutes | If worker doesn't ACK within 5 min, job becomes visible again |
+
+---
+
+[Back to Roadmap](../README.md) | [FFmpeg Commands](ffmpeg-mastery.md) | [Failure Modeling](failure-modeling.md) | [Cost Architecture](cost-architecture.md)

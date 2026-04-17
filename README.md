@@ -312,6 +312,8 @@ Before code, understand the pipeline: `Capture → Encode → Store → Process 
 - [**Streaming Internals: HLS, ABR, & Buffering**](docs/streaming-internals.md) 🎬
 - [**System Failure & Resilience Modeling**](docs/failure-modeling.md) 🐜
 - [**Operations Runbook: Metrics, Scaling, & Cost**](docs/operations-runbook.md) 🔧
+- [**Cost Architecture: Where the Money Goes**](docs/cost-architecture.md) 💰
+- [**Hyperscale: The 100M User Architecture**](docs/hyperscale.md) 🌍
 
 ### 🧩 Phase 1: From Scratch (< 1K Users)
 - **Project 1:** [Basic Video Streaming Server](projects/01-basic-streaming-server/README.md) — `206 Partial Content`, Range Requests, byte-level streaming.
@@ -332,6 +334,89 @@ Before code, understand the pipeline: `Capture → Encode → Store → Process 
 
 ### 🧱 Phase 5: Service Mesh (1M+ Users)
 - **Project 10:** [Microservices Migration](projects/10-microservices-migration/README.md) — Service isolation, API gateway, rate limiting, distributed tracing challenges.
+
+---
+
+## ⚖️ Architecture Trade-off Comparisons
+
+### Monolith vs Microservices
+
+| Dimension | Monolith (Phase 2) | Microservices (Phase 5) |
+|---|---|---|
+| Deployment speed | 1 binary, 1 deploy | 4+ services, independent deploys |
+| Debug complexity | Stack trace → root cause | Distributed trace across 4 services |
+| Latency | In-process function call (0ms) | Network hop per service (2-10ms each) |
+| Team scaling | Merge conflicts at 5+ devs | Independent ownership per service |
+| Resource usage | Shared CPU/memory | Overhead per container (~100MB each) |
+| **When to use** | **< 10 engineers, < 100K users** | **> 10 engineers, > 1M users** |
+
+### Sync vs Async Processing
+
+| Dimension | Synchronous | Asynchronous (Queue-based) |
+|---|---|---|
+| User experience | Waits for result | Gets job ID, polls for status |
+| Failure handling | Request fails → user retries | Worker fails → queue retries automatically |
+| Scale | Limited by request timeout (30s) | Jobs can take minutes (FFmpeg) |
+| Complexity | Simple request/response | Queue + worker + status tracking |
+| **When to use** | **Auth, catalog lookup** | **Transcoding, batch processing** |
+
+### CDN vs Direct Origin Delivery
+
+| Dimension | Direct Origin | CDN Edge Delivery |
+|---|---|---|
+| Latency | 100-400ms (depends on distance) | 10-50ms (nearest PoP) |
+| Cost per GB | $0.09 (S3 egress) | $0.02 (CDN edge) |
+| Cache hit rate | N/A | 95%+ for popular content |
+| Cost at 100K viewers/hr | $11,340/hour | $2,961/hour |
+| **When to use** | **Prototype only** | **Always in production** |
+
+### Strong vs Eventual Consistency
+
+| Dimension | Strong Consistency | Eventual Consistency |
+|---|---|---|
+| Read-after-write | Guaranteed: write → read returns new value | May return stale data for milliseconds |
+| Latency | Higher (must wait for replication) | Lower (read from nearest replica) |
+| Availability | Lower (if primary down, writes blocked) | Higher (any replica can serve reads) |
+| Use in VideoScale | Billing, revenue tracking | Video catalog, auth tokens, cache |
+| **CAP tradeoff** | **CP (consistency + partition tolerance)** | **AP (availability + partition tolerance)** |
+
+---
+
+## 🚢 Deployment Model
+
+```
+CONTAINER ARCHITECTURE (Docker Compose → Kubernetes path):
+
+┌─────────────────────────────────────────────────────┐
+│                    Kubernetes Cluster                 │
+│                                                       │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐  ┌────────┐ │
+│  │ Nginx   │  │ FastAPI  │  │ Celery  │  │ Aiortc │ │
+│  │ Gateway │  │ API ×N   │  │ Worker  │  │ WebRTC │ │
+│  │ (Ingress│  │ (Deploy) │  │ ×N      │  │ ×N     │ │
+│  │ Ctrl)   │  │          │  │(Deploy) │  │(Deploy)│ │
+│  └────┬────┘  └────┬────┘  └────┬────┘  └───┬────┘ │
+│       │            │            │            │       │
+│  ┌────┴────────────┴────────────┴────────────┴────┐ │
+│  │              Service Mesh (Networking)          │ │
+│  └────────────────────┬───────────────────────────┘ │
+│                       │                              │
+│  ┌────────┐  ┌───────┴───┐  ┌──────────┐           │
+│  │ Redis  │  │  MinIO    │  │  Postgres │           │
+│  │(StatefulSet)│(StatefulSet)│(StatefulSet)          │
+│  └────────┘  └───────────┘  └──────────┘           │
+└─────────────────────────────────────────────────────┘
+
+SCALING RULES (HPA):
+  API:     min=2, max=10, target CPU=70%
+  Workers: min=1, max=20, target queue_depth=5
+  WebRTC:  min=1, max=8,  target active_sessions=500
+
+ROLLOUT STRATEGY:
+  API + Gateway:  rolling update (0 downtime)
+  Workers:        drain queue → update → restart
+  Schema changes: blue-green deployment with backward-compatible migrations
+```
 
 ---
 
@@ -357,11 +442,113 @@ Before code, understand the pipeline: `Capture → Encode → Store → Process 
 
 ---
 
+## 📖 Glossary
+
+| Term | Definition |
+|---|---|
+| **ABR** | Adaptive Bitrate — client-side algorithm that switches video quality based on bandwidth |
+| **CDN** | Content Delivery Network — edge servers that cache content close to users |
+| **CRR** | Cross-Region Replication — automatic S3 data copy between regions |
+| **DLQ** | Dead Letter Queue — failed jobs sent here after max retries for manual review |
+| **DRM** | Digital Rights Management — encryption preventing unauthorized playback |
+| **GOP** | Group of Pictures — segment boundary in video encoding (keyframe interval) |
+| **HLS** | HTTP Live Streaming — Apple's protocol using .m3u8 playlists and .ts segments |
+| **IOPS** | Input/Output Operations Per Second — storage performance metric |
+| **m3u8** | Playlist file format listing .ts segments for the player to fetch |
+| **RTMP** | Real-Time Messaging Protocol — low-latency ingest protocol (OBS → server) |
+| **SDP** | Session Description Protocol — WebRTC connection negotiation format |
+| **SLI** | Service Level Indicator — measured metric (e.g., p99 latency) |
+| **SLO** | Service Level Objective — target for an SLI (e.g., p99 < 200ms) |
+| **SRTP** | Secure Real-time Transport Protocol — encrypted media delivery in WebRTC |
+| **TTFB** | Time To First Byte — latency from request to first response byte |
+| **TTFF** | Time To First Frame — latency from play button to first visible frame |
+| **ts** | Transport Stream — MPEG-2 container format for HLS video segments |
+| **VBR** | Variable Bitrate — encoding where bitrate fluctuates with scene complexity |
+
+---
+
+## ❓ FAQ & Common Mistakes
+
+**Q: Why not just use YouTube/Vimeo embed?**
+A: If you control the pipeline, you control latency, cost, DRM, and analytics. Embeds give you none of that.
+
+**Q: Why HLS and not DASH?**
+A: HLS has universal browser support (including iOS Safari). DASH requires dash.js and has no Safari support without MSE workarounds.
+
+**Q: Why 6-second segments instead of 2?**
+A: 6s segments reduce CDN request volume by 3× (83% fewer requests). For VOD, the startup penalty is acceptable. Live uses 2s when latency matters.
+
+**Q: Why not use H.265/AV1?**
+A: H.264 has universal hardware decode support. AV1 is 10× slower to encode and lacks hardware decode on older devices. Use H.264 now, upgrade codec when device support reaches 90%+.
+
+### Common Mistakes
+
+| Mistake | Why It Fails | Fix |
+|---|---|---|
+| Transcoding in the request handler | Request times out at 30s, FFmpeg needs 8 min | Use async queue (Redis + Celery) |
+| No CDN, serving .ts from origin | Origin crashes at 1,000 viewers | Add Nginx cache or CDN edge |
+| Single quality level | 3G users buffer forever, fiber users get potato quality | Implement ABR with 4 quality levels |
+| Storing files on local disk | Server restart = all videos lost | Use S3/MinIO for durable storage |
+| No retry logic on S3 uploads | Transient failures = lost transcodes | Exponential backoff + idempotent workers |
+| Cache TTL too short | High miss rate, origin overloaded | Set TTL to 24h for VOD, 6s for live |
+
+---
+
+## 🎯 System Design Interview Questions (This Repo Answers)
+
+1. **Design a video streaming platform like Netflix** → Full repo walkthrough
+2. **How does adaptive bitrate streaming work?** → [Streaming Internals](docs/streaming-internals.md#2-adaptive-bitrate-abr-switching-logic)
+3. **How would you handle a thundering herd at CDN?** → [Failure Modeling](docs/failure-modeling.md#f3-cdn-cache-miss--request-collapsing)
+4. **Design for 100M users** → [Hyperscale Guide](docs/hyperscale.md)
+5. **How do you handle a transcoder crash?** → [Failure Modeling](docs/failure-modeling.md#f2-transcoder-crash--retry-queue-with-exponential-backoff)
+6. **CDN vs origin: cost tradeoff?** → [Cost Architecture](docs/cost-architecture.md#2-cdn-vs-origin-the-core-cost-tradeoff)
+7. **Strong vs eventual consistency at scale?** → [Hyperscale: Consistency](docs/hyperscale.md#consistency-at-hyperscale)
+8. **How would you optimize costs at 1M users?** → [Cost Architecture](docs/cost-architecture.md#3-storage-tiering-strategy)
+9. **Monolith vs microservices: when to migrate?** → [Trade-off Comparisons](#️-architecture-trade-off-comparisons)
+10. **How does DRM key rotation work?** → [Project 8](projects/08-drm-protection/README.md#key-rotation-strategy)
+
+---
+
+## 🔮 How to Extend This System
+
+| Extension | Complexity | Description |
+|---|---|---|
+| Add real CDN (CloudFront) | Medium | Replace Nginx cache with AWS CloudFront distribution |
+| Service mesh (Istio) | High | Add sidecar proxies for mTLS, traffic shaping, observability |
+| Real-time analytics | Medium | Add client beacon → Kafka → ClickHouse pipeline for viewer metrics |
+| Recommendation engine | High | Build "watch next" using collaborative filtering on viewing history |
+| Multi-tenant SaaS | Medium | Add org isolation, per-tenant storage quotas, billing API |
+| Live chat overlay | Low | Add WebSocket server for real-time chat alongside live stream |
+| Codec upgrade (AV1) | Medium | Swap FFmpeg preset, add AV1 quality ladder, maintain H.264 fallback |
+| Mobile SDK | High | Build iOS/Android player with native ABR and offline download support |
+
+---
+
 ## 📂 Repository Structure
 
-- `docs/` — Deep dives: streaming internals, failure modeling, operations, FFmpeg
-- `projects/` — Hands-on implementations for each scaling phase
-- `samples/` — Centralized raw media assets
+```
+videostreaming/
+├── docs/                              # Engineering deep-dives
+│   ├── streaming-internals.md         # HLS, ABR, buffering (THE core doc)
+│   ├── failure-modeling.md            # 8 failure scenarios + mitigations
+│   ├── operations-runbook.md          # SLOs, autoscaling, alerting
+│   ├── cost-architecture.md           # CDN/storage/transcode economics
+│   ├── hyperscale.md                  # 100M user architecture
+│   ├── ffmpeg-mastery.md              # FFmpeg command reference
+│   └── principles-and-architecture.md # Theoretical foundation
+├── projects/
+│   ├── 01-basic-streaming-server/     # Range Requests, 206 Partial Content
+│   ├── 02-build-your-own-hls/         # .ts segmentation, .m3u8, ABR
+│   ├── 03-scalable-backend/           # Async transcoding, background workers
+│   ├── 04-streaming-optimization/     # Edge caching, signed URLs
+│   ├── 05-cloud-native-emulator/      # S3, Redis queues, storage tiering
+│   ├── 06-chaos-and-resilience/       # Circuit breakers, retry patterns
+│   ├── 07-live-streaming/             # RTMP ingest, live HLS
+│   ├── 08-drm-protection/             # AES-128 encryption, key rotation
+│   ├── 09-webrtc-low-latency/         # Sub-500ms WebRTC
+│   └── 10-microservices-migration/    # Service mesh, API gateway
+└── samples/                           # Raw media assets
+```
 
 ---
 
