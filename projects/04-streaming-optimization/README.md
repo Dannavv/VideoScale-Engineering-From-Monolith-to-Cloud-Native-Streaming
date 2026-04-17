@@ -56,4 +56,4 @@ docker-compose up -d --build
 ```
 👉 **Dashboard: http://localhost:8084**
 
-[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#4-edge-caching--security-project-4)
+**Read Next:** [Project 5: Cloud-Native Emulator](../05-cloud-native-emulator/README.md) — Durable S3 storage + queues | [Cost Architecture](../../docs/cost-architecture.md#2-cdn-vs-origin-the-core-cost-tradeoff) | [Back to Roadmap](../../README.md)

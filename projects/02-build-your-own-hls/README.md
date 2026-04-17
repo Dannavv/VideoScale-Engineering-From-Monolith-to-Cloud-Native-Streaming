@@ -61,13 +61,23 @@ At 1,000 concurrent uploads:
 - **Con (Storage Explosion):** 4 quality levels = ~2.5× the original file size. At scale, storage costs dominate.
 - **Con (Segment Request Volume):** A 2-hour movie at 6s segments = 1,200 HTTP requests per quality level per viewer.
 
+## 🎬 Role in the Streaming Pipeline
+
+```
+THIS PROJECT:  [2. HLS ENGINE — THE CORE]
+                    │
+Upload → ──► TRANSCODE → SEGMENT (.ts) → MANIFEST (.m3u8) → CDN → ABR → Play
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+              You are here. This is the HEART of the system.
+
+Every project after this depends on what we build here:
+  Project 3: Automates this transcode pipeline
+  Project 4: Caches these .ts segments at the edge
+  Project 5: Stores these segments in S3
+  Project 7: Generates these segments in real-time (live)
+  Project 8: Encrypts these segments with AES-128
+```
+
 ---
 
-## 🚀 How to Run
-1. **Start the Player:**
-   ```bash
-   npm install && npm start
-   ```
-2. **Open Dashboard:** `http://localhost:3001`
-
-[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#2-adaptive-bitrate-abr--hls-project-2) | [FFmpeg Commands](../../docs/ffmpeg-mastery.md#1-hlsabr-generation-project-2--3)
+**Read Next:** [Project 3: Scalable Monolith](../03-scalable-backend/README.md) — Automate this pipeline | [Streaming Internals Deep-Dive](../../docs/streaming-internals.md) | [Back to Roadmap](../../README.md)

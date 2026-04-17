@@ -86,4 +86,42 @@ To test the "Real World" experience on a mobile device:
    *(Example: http://192.168.1.5:3000)*
 4. Experiment with seeking and notice how the browser handles buffering differently on mobile networks.
 
-[Back to Roadmap](../../README.md)
+---
+
+## 📊 Phase Constraints
+
+| Metric | This Phase | Next Phase (HLS) |
+|---|---|---|
+| Max concurrent users | ~100 | ~1,000 |
+| Bandwidth efficiency | 1.5% (full file GET) → 60% (Range) | 95%+ (ABR serves right quality) |
+| Seek precision | ±1 byte (exact) | ±6 seconds (segment boundary) |
+| Storage per video | 1× (single quality) | 2.5× (4 quality levels) |
+| Monthly cost (1K users) | $50 (single server) | $112 (server + storage) |
+
+## 🎬 Role in the Streaming Pipeline
+
+```
+THIS PROJECT:  [1. DELIVERY PRIMITIVE]
+                    │
+Upload → Transcode → Segment → Manifest → CDN → ──► RANGE REQUEST → Buffer → Play
+                                                     ^^^^^^^^^^^^^^^^
+                                                     You are here.
+
+This project teaches the foundation: how does a browser fetch bytes from a server?
+Every project after this builds on top of this mechanism.
+HLS segments (.ts files) are still delivered via Range Requests internally.
+```
+
+## 📈 Production Dashboard (What You'd Monitor)
+
+| Metric | Value | Alert If |
+|---|---|---|
+| Active connections | ~100 | > 200 (server will lag) |
+| File descriptors open | ~100 | > 900 (kernel limit approaching) |
+| Disk read throughput | 500 MB/s | > 80% of disk max |
+| Network egress | 500 Mbps | > 80% of NIC capacity |
+| TTFB (p95) | 50ms | > 200ms |
+
+---
+
+**Read Next:** [Project 2: DIY HLS & ABR](../02-build-your-own-hls/README.md) — Solve the single-quality problem | [Streaming Internals Deep-Dive](../../docs/streaming-internals.md) | [Back to Roadmap](../../README.md)

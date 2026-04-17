@@ -75,4 +75,4 @@ docker-compose up -d --build
 ffmpeg -re -i /home/thearp/projects/videostreaming/samples/sample1.mp4 -vcodec libx264 -acodec aac -f flv rtmp://localhost:1935/live/stream1
 ```
 
-[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#7-rtmp-ingestion-project-7)
+**Read Next:** [Project 8: DRM & Content Protection](../08-drm-protection/README.md) — Encrypt .ts segments | [Streaming Internals: Live vs VOD](../../docs/streaming-internals.md#5-live-vs-vod-streaming) | [Back to Roadmap](../../README.md)

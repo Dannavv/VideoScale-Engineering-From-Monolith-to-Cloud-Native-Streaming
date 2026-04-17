@@ -51,4 +51,57 @@ docker-compose up -d --build
 ```
 👉 **Dashboard: http://localhost:8000**
 
-[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#3-asynchronous-transcoding-project-3)
+---
+
+## 📊 Phase Constraints
+
+| Metric | This Phase | Previous (Manual) | Next Phase (Cloud) |
+|---|---|---|---|
+| Max concurrent uploads | 50 | 1 (manual CLI) | 500+ (distributed workers) |
+| Transcode throughput | 4 videos/parallel | 1 at a time | 20+ (celery workers) |
+| TTFB (non-upload requests) | 2.1s under load | 50ms (no load) | < 200ms (workers isolated) |
+| Storage | Local disk (ephemeral) | Local disk | S3 (durable, infinite) |
+| Monthly cost (1K users) | $50 | $50 | $200 |
+
+## 🎬 Role in the Streaming Pipeline
+
+```
+THIS PROJECT:  [3. ASYNC TRANSCODE ENGINE]
+                    │
+Upload → ──► BACKGROUND WORKER (FFmpeg) ──► Segment → Manifest → CDN → Play
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+              You are here.
+
+This project solves: "How do we transcode WITHOUT blocking the API?"
+Answer: Accept upload, return 202, queue FFmpeg in background.
+Output: .ts segments + .m3u8 playlists (same as Project 2, but automated).
+```
+
+## 📈 Production Dashboard (What You'd Monitor)
+
+| Metric | Healthy | Degraded | Critical |
+|---|---|---|---|
+| FFmpeg CPU usage | < 70% | 70-90% | > 90% (API starved) |
+| Transcode queue depth | < 5 | 5-20 | > 50 (users waiting 30+ min) |
+| API p95 latency | < 200ms | 200ms-1s | > 2s |
+| Memory usage | < 60% | 60-80% | > 80% (OOM risk) |
+| Upload success rate | > 99% | 95-99% | < 95% |
+
+## 💰 Cost Impact at This Phase
+
+```
+COMPUTE (1 server, 4 cores):
+  $50/month (handles ~50 concurrent uploads)
+  CPU split: 80% FFmpeg, 20% API
+  Problem: they compete for the SAME cores
+
+WHEN TO MOVE TO NEXT PHASE:
+  IF transcode_queue_depth > 20 regularly
+  IF API_p95_latency > 1s
+  IF upload abandonment > 10%
+  → You need Project 5 (isolated workers in the cloud)
+```
+
+---
+
+**Read Next:** [Project 4: Edge Caching & Signed URLs](../04-streaming-optimization/README.md) — Cache segments at the edge | [Cost Architecture](../../docs/cost-architecture.md#4-transcoding-cost-explosion) | [Back to Roadmap](../../README.md)

@@ -39,10 +39,70 @@ At **1,000 concurrent viewers**, a single WebRTC Media Server (like this Aiortc 
 
 ---
 
+## 📊 Phase Constraints
+
+| Metric | HLS (Project 7) | WebRTC (This Project) |
+|---|---|---|
+| Glass-to-glass latency | 6-18 seconds | < 500ms |
+| Max viewers/server | 100,000+ (cached .ts) | ~500 (stateful UDP) |
+| CDN cacheable | ✅ (static .ts files) | ❌ (unique per-user stream) |
+| Network protocol | TCP (reliable, ordered) | UDP (fast, lossy) |
+| Cost per 1K viewers/hour | $0.50 (CDN cached) | $25 (server CPU per user) |
+| Seek support | ✅ Full timeline | ❌ Live only |
+
+## 🎬 Role in the Streaming Pipeline
+
+```
+THIS PROJECT:  [9. REAL-TIME DELIVERY]
+                    │
+  Standard path: Upload → Transcode → .ts → CDN → HLS.js (6-18s delay)
+                                                        │
+  WebRTC path:   Camera → ──► MEDIA SERVER (aiortc) → UDP/SRTP → Browser (<500ms)
+                              ^^^^^^^^^^^^^^^^^^^^^^
+                              You are here.
+
+This project REPLACES the HLS pipeline for real-time use cases:
+  Auctions, gambling, interactive gaming, video calls
+  Where 6 seconds of delay = unacceptable
+
+BUT: it cannot replace HLS for VOD. Different tool, different job.
+```
+
+## 📈 Production Dashboard (What You'd Monitor)
+
+| Metric | Healthy | Degraded | Critical |
+|---|---|---|---|
+| Active WebRTC sessions | < 500/server | 500-800 | > 800 (CPU saturated) |
+| CPU per session | < 0.2% | 0.2-0.5% | > 0.5% (needs scaling) |
+| Packet loss rate | < 1% | 1-5% | > 5% (video artifacts visible) |
+| ICE connection time | < 2s | 2-5s | > 5s (NAT traversal issues) |
+| Jitter buffer delay | < 50ms | 50-200ms | > 200ms (defeats purpose) |
+
+## 💰 Cost Impact (WebRTC is EXPENSIVE)
+
+```
+HLS at 10K viewers:
+  CDN serves cached .ts files
+  Server load: ~0 (CDN handles everything)
+  Cost: $5/hour
+
+WebRTC at 10K viewers:
+  Server must encrypt + packetize + send to EACH user
+  Server load: 10,000 active UDP sessions × 0.2% CPU each = 20 full cores
+  Cost: $250/hour (50× more expensive than HLS)
+
+WHEN TO USE WEBRTC:
+  ✅ Latency < 1 second is REQUIRED (auctions, gambling)
+  ✅ Audience < 10,000 concurrent (cost-manageable)
+  ❌ Large audience + few seconds delay acceptable → use HLS instead
+```
+
+---
+
 ## 🚀 How to Run
 ```bash
 docker-compose up -d --build
 ```
 👉 **Real-Time Studio: http://localhost:8089**
 
-[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#project-9-ultra-low-latency-webrtc)
+**Read Next:** [Project 10: Microservices](../10-microservices-migration/README.md) — Service isolation at scale | [Hyperscale Guide](../../docs/hyperscale.md) | [Back to Roadmap](../../README.md)

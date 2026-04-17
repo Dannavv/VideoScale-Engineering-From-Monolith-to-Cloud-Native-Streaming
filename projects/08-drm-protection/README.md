@@ -69,4 +69,4 @@ docker-compose up -d --build
 ```
 👉 **Secure Player: http://localhost:8088**
 
-[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#phase-4-real-time--security)
+**Read Next:** [Project 9: WebRTC Ultra-Low Latency](../09-webrtc-low-latency/README.md) — Real-time, zero-buffer streaming | [Failure Modeling: DRM Key Vault](../../docs/failure-modeling.md) | [Back to Roadmap](../../README.md)

@@ -64,4 +64,4 @@ docker-compose up -d --build
 ```
 👉 **Cloud Console: http://localhost:8005**
 
-[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#5-distributed-storage-project-5)
+**Read Next:** [Project 6: Chaos & Resilience](../06-chaos-and-resilience/README.md) — Protect the pipeline from failure | [Cost Architecture: Storage Tiering](../../docs/cost-architecture.md#3-storage-tiering-strategy) | [Back to Roadmap](../../README.md)
