@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoScale | Cloud Console</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&family=Fira+Code:wght@400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --aws-orange: #ff9900;
+            --bg: #0b0e14;
+            --card: #161b22;
+            --accent: #00a1c9;
+            --text: #e6edf3;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Space Grotesk', sans-serif;
+            margin: 0;
+            display: flex;
+        }
+
+        /* Sidebar Like AWS */
+        .sidebar {
+            width: 240px;
+            background: #1c2733;
+            height: 100vh;
+            padding: 1.5rem;
+            box-sizing: border-box;
+            border-right: 1px solid #30363d;
+        }
+
+        .main {
+            flex: 1;
+            padding: 2rem;
+            max-width: 1200px;
+        }
+
+        .logo {
+            font-weight: 600;
+            font-size: 1.4rem;
+            color: var(--aws-orange);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 2rem;
+        }
+
+        .nav-item {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: #8b949e;
+            user-select: none;
+        }
+
+        .nav-item:hover { background: rgba(255,255,255,0.05); color: white; }
+        .nav-item.active { background: #30363d !important; color: white !important; font-weight: 600; }
+
+        /* Dashboard Content */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border: 1px solid #30363d;
+            padding: 1.5rem;
+            border-radius: 8px;
+        }
+
+        .stat-label { font-size: 0.8rem; color: #8b949e; margin-bottom: 5px; }
+        .stat-value { font-size: 1.5rem; font-weight: 600; color: var(--accent); }
+
+        .lab-box {
+            background: var(--card);
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .bucket-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .bucket-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            border-bottom: 1px solid #30363d;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9rem;
+        }
+
+        .btn {
+            background: var(--aws-orange);
+            color: black;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 1rem;
+        }
+
+        .dropzone {
+            border: 2px dashed #30363d;
+            padding: 3rem;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+
+        .dropzone:hover { border-color: var(--aws-orange); }
+
+        .tag {
+            background: #238636;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.7rem;
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo">☁️ VideoScale</div>
+    <div class="nav-item active" onclick="showTab('s3')">S3 Buckets</div>
+    <div class="nav-item" onclick="showTab('ec2')">EC2 Workers</div>
+    <div class="nav-item" onclick="showTab('logs')">CloudWatch Logs</div>
+</div>
+
+<div class="main">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1 style="margin: 0">S3 Management Console</h1>
+        <div style="color: #8b949e; font-size: 0.9rem">Region: <b>local-emulator-1</b></div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Raw S3 Bucket</div>
+            <div class="stat-value">raw-videos</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Active Workers</div>
+            <div class="stat-value" id="workerCount">Scaling...</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Avg. Latency</div>
+            <div class="stat-value">840ms</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Storage Class</div>
+            <div class="stat-value">STANDARD</div>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr; gap: 2rem;" id="s3View">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+            <!-- Uploader -->
+            <div class="lab-box">
+                <h3 style="margin-top: 0">📤 Ingest Engine (API Gateway)</h3>
+                <p style="color: #8b949e; font-size: 0.9rem">Upload to trigger the event-driven Lambda pipeline.</p>
+                
+                <div class="dropzone" onclick="document.getElementById('fileInput').click()">
+                    <div style="font-size: 2rem; margin-bottom: 10px">📄</div>
+                    <div>Click to select video for S3 Ingestion</div>
+                    <input type="file" id="fileInput" hidden onchange="uploadVideo()">
+                </div>
+                <div id="uploadStatus" style="margin-top: 1rem; color: var(--accent); font-size: 0.9rem"></div>
+            </div>
+
+            <!-- Bucket List -->
+            <div class="lab-box">
+                <h3 style="margin-top: 0">🗄️ Bucket: processed-hls</h3>
+                <ul class="bucket-list" id="videoList">
+                    <li style="color: #484f58">No processed objects found...</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- EC2 Workers View -->
+    <div id="ec2View" class="lab-box" style="display: none;">
+        <h3 style="margin-top: 0">🖥️ EC2 Auto-Scaling Group</h3>
+        <p style="color: #8b949e; font-size: 0.9rem">Status of your distributed transcoding fleet.</p>
+        <div class="bucket-list">
+            <div class="bucket-item">
+                <span>⚡ i-0823485 (Processing Fleet)</span>
+                <span class="tag">RUNNING</span>
+            </div>
+            <div class="bucket-item">
+                <span>⚡ i-0912192 (Spot Instance)</span>
+                <span class="tag" style="background: #38bdf8">WAITING</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CloudWatch View -->
+    <div id="logsView" class="lab-box" style="display: none;">
+        <h3 style="margin-top: 0">📜 CloudWatch Log Groups</h3>
+        <div style="background: #020617; padding: 1.5rem; border-radius: 8px; font-family: 'Fira Code', monospace; font-size: 0.8rem; color: #10b981; max-height: 300px; overflow-y: auto;" id="logStream">
+            [INFO] 18:22:04 - CloudWatch Agent Started...<br>
+            [INFO] 18:22:10 - Detected Ingestion event in raw-videos<br>
+            [DEBUG] 18:22:11 - Triggering Lambda ARN:transcode_worker:v1
+        </div>
+    </div>
+</div>
+
+<script>
+    function showTab(tab) {
+        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+        document.getElementById('s3View').style.display = 'none';
+        document.getElementById('ec2View').style.display = 'none';
+        document.getElementById('logsView').style.display = 'none';
+
+        if (tab === 's3') {
+            document.getElementById('s3View').style.display = 'grid';
+            document.querySelector('[onclick="showTab(\'s3\')"]').classList.add('active');
+        } else if (tab === 'ec2') {
+            document.getElementById('ec2View').style.display = 'block';
+            document.querySelector('[onclick="showTab(\'ec2\')"]').classList.add('active');
+        } else if (tab === 'logs') {
+            document.getElementById('logsView').style.display = 'block';
+            document.querySelector('[onclick="showTab(\'logs\')"]').classList.add('active');
+        }
+    }
+
+    async function uploadVideo() {
+        const fileInput = document.getElementById('fileInput');
+        if (!fileInput.files[0]) return;
+
+        const status = document.getElementById('uploadStatus');
+        const logStream = document.getElementById('logStream');
+        status.innerText = "⚡ Uploading to S3...";
+        logStream.innerHTML += `<br>[INFO] ${new Date().toLocaleTimeString()} - User triggered upload via API`;
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            status.innerText = "✅ " + data.message;
+            logStream.innerHTML += `<br>[SUCCESS] ${new Date().toLocaleTimeString()} - File mapped to S3: ${data.s3_path}`;
+            fileInput.value = '';
+            setTimeout(fetchVideos, 2000);
+        } catch (err) {
+            status.innerText = "❌ Error: " + err.message;
+            logStream.innerHTML += `<br>[ERROR] ${new Date().toLocaleTimeString()} - ${err.message}`;
+        }
+    }
+
+    async function fetchVideos() {
+        try {
+            const res = await fetch('/list');
+            const data = await res.json();
+            const list = document.getElementById('videoList');
+            
+            if (data.videos.length === 0) {
+                list.innerHTML = '<li style="color: #484f58">No processed objects found...</li>';
+                return;
+            }
+
+            list.innerHTML = data.videos.map(id => `
+                <li class="bucket-item">
+                    <span>${id}/index.m3u8</span>
+                    <span class="tag">HLS STREAM</span>
+                </li>
+            `).join('');
+        } catch (err) {}
+    }
+
+    // Initial load
+    fetchVideos();
+    setInterval(fetchVideos, 5000);
+</script>
+
+</body>
+</html>

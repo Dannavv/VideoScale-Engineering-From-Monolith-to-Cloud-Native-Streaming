@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Adaptive Player | Project 2</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 900px;
+            background: rgba(30, 41, 59, 0.7);
+            padding: 2rem;
+            border-radius: 1.5rem;
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            color: #94a3b8;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+        video {
+            width: 100%;
+            aspect-ratio: 16/9;
+            border-radius: 1rem;
+            background: black;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+        .stats {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 1rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .stat-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        .label { color: #60a5fa; }
+        .value { color: #10b981; }
+        .badge {
+            background: #8b5cf6;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HLS Adaptive Bitrate Player</h1>
+        <div class="subtitle">Project 2: Multipart Segments & Mastery of M3U8</div>
+
+        <video id="video" controls></video>
+
+        <div class="stats">
+            <div style="margin-bottom: 10px; font-weight: bold; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 5px;">
+                🔴 Real-time Stream Metrics
+            </div>
+            <div class="stat-line">
+                <span class="label">Status:</span>
+                <span id="status" class="value">Disconnected</span>
+            </div>
+            <div class="stat-line">
+                <span class="label">Current Quality:</span>
+                <span id="quality" class="value">Auto</span>
+            </div>
+            <div class="stat-line">
+                <span class="label">Resolution:</span>
+                <span id="resolution" class="value">-</span>
+            </div>
+            <div class="stat-line">
+                <span class="label">Bitrate:</span>
+                <span id="bitrate" class="value">-</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById('video');
+        const statusEl = document.getElementById('status');
+        const qualityEl = document.getElementById('quality');
+        const resolutionEl = document.getElementById('resolution');
+        const bitrateEl = document.getElementById('bitrate');
+
+        const streamUrl = '/stream/master.m3u8';
+
+        if (Hls.isSupported()) {
+            const hls = new Hls({
+                debug: false,
+                enableWorker: true
+            });
+
+            hls.loadSource(streamUrl);
+            hls.attachMedia(video);
+
+            hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                statusEl.innerText = "Loaded (ABR Enabled)";
+                video.play();
+            });
+
+            // Track Quality Changes
+            hls.on(Hls.Events.LEVEL_SWITCHED, function(event, data) {
+                const level = hls.levels[data.level];
+                qualityEl.innerText = `Level ${data.level}`;
+                resolutionEl.innerText = `${level.width}x${level.height}`;
+                bitrateEl.innerText = `${(level.bitrate / 1000000).toFixed(2)} Mbps`;
+            });
+
+            hls.on(Hls.Events.ERROR, function(event, data) {
+                if (data.fatal) {
+                   statusEl.innerText = "Error: File missing. Did you run the encode script?";
+                   statusEl.style.color = "#ef4444";
+                }
+            });
+
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            // Safari native HLS support
+            video.src = streamUrl;
+            statusEl.innerText = "Native Safari HLS";
+        }
+    </script>
+</body>
+</html>

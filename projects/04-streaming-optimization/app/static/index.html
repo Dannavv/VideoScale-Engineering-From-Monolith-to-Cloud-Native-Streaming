@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoScale | Optimization & Security</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Fira+Code:wght@400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --accent: #f43f5e;
+            --cache: #10b981;
+            --text: #f8fafc;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            margin: 0;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #f43f5e, #fb7185);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .labs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        .lab-card {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 1.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        h2 { margin-top: 0; color: #94a3b8; font-size: 1.2rem; text-transform: uppercase; letter-spacing: 1px; }
+
+        .btn {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 1rem;
+            transition: transform 0.2s;
+        }
+
+        .btn:active { transform: scale(0.98); }
+
+        .result-box {
+            background: #020617;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-top: 1.5rem;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.85rem;
+            min-height: 100px;
+            overflow: hidden;
+            border-left: 4px solid var(--accent);
+        }
+
+        .cache-hit { border-left-color: var(--cache) !important; }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .badge-miss { background: #64748b; }
+        .badge-hit { background: var(--cache); }
+        .badge-error { background: #ef4444; }
+
+        .video-box {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1rem;
+            color: #475569;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Optimization & Security Lab</h1>
+        <p style="color: #94a3b8">Project 4: Caching Strategies and HMAC Signed URLs</p>
+    </header>
+
+    <div class="labs">
+        <!-- LAB 1: SECURITY -->
+        <div class="lab-card">
+            <h2>🛡️ Security Lab (Signed URLs)</h2>
+            <p style="font-size: 0.9rem">Only requests with a valid cryptographic signature can access the video.</p>
+            
+            <button class="btn" style="background: #475569" onclick="testLink('/secure-video')">Test Unsigned Link</button>
+            <button class="btn" onclick="generateAndTest()">Generate & Test Signed Link</button>
+
+            <div id="securityResult" class="result-box">
+                <div style="color: #64748b">// Waiting for test...</div>
+            </div>
+        </div>
+
+        <!-- LAB 2: CACHING -->
+        <div class="lab-card">
+            <h2>⚡ Optimization Lab (Caching)</h2>
+            <p style="font-size: 0.9rem">Check if Nginx is serving the request from cache (EDGE) or Origin.</p>
+            
+            <button class="btn" style="background: var(--cache)" onclick="testCache()">Request Cached Resource</button>
+
+            <div id="cacheResult" class="result-box">
+                <div style="color: #64748b">// Waiting for request...</div>
+            </div>
+            
+            <div style="margin-top: 1rem; font-size: 0.8rem; color: #64748b">
+                First request will be a <b>MISS</b> (fetched from backend). <br>
+                Subsequent requests will be a <b>HIT</b> (fetched from Nginx).
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function testLink(path) {
+        const resultBox = document.getElementById('securityResult');
+        resultBox.innerHTML = '<div style="color: #64748b">Fetching...</div>';
+        
+        try {
+            const res = await fetch(path);
+            if (res.ok) {
+                resultBox.innerHTML = `<div style="color: var(--cache)">✅ SUCCESS: Access Granted!</div><div style="font-size: 10px; margin-top: 5px">${path}</div>`;
+            } else {
+                const data = await res.json();
+                resultBox.innerHTML = `<div style="color: #ef4444">❌ ERROR: ${res.status} Forbidden</div><div style="font-size: 10px; color: #64748b">${data.detail}</div>`;
+            }
+        } catch (err) {
+            resultBox.innerText = "Error: " + err.message;
+        }
+    }
+
+    async function generateAndTest() {
+        const res = await fetch('/api/sign?path=/secure-video');
+        const data = await res.json();
+        testLink(data.signed_url);
+    }
+
+    async function testCache() {
+        const resultBox = document.getElementById('cacheResult');
+        const start = performance.now();
+        
+        try {
+            // We use /status for the cache test as it returns our headers
+            const res = await fetch('/status');
+            const data = await res.json();
+            const end = performance.now();
+            
+            // In a real Nginx setup, we check for X-Cache-Status header
+            // Note: browser might not show custom headers in fetch unless CORS is configured on Nginx
+            const cacheStatus = res.headers.get('X-Cache-Status') || 'MISS (Simulated: Backend Reached)';
+            const color = cacheStatus.includes('HIT') ? 'var(--cache)' : '#fb7185';
+            
+            resultBox.className = cacheStatus.includes('HIT') ? 'result-box cache-hit' : 'result-box';
+            resultBox.innerHTML = `
+                <div style="margin-bottom: 8px">
+                    <span class="badge ${cacheStatus.includes('HIT') ? 'badge-hit' : 'badge-miss'}">${cacheStatus}</span>
+                </div>
+                <div class="stat">Latency: <span style="color: ${color}">${(end - start).toFixed(2)}ms</span></div>
+                <div class="stat" style="font-size: 0.7rem; color: #64748b; margin-top: 10px">Origin TS: ${data.timestamp}</div>
+            `;
+        } catch (err) {
+            resultBox.innerHTML = `<span class="badge badge-error">Network Error</span><div style="margin-top:5px">${err.message}</div>`;
+        }
+    }
+</script>
+</body>
+</html>

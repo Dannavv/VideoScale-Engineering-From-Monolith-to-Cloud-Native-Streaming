@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoScale | Pipeline Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=Fira+Code:wght@400&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #020617;
+            --card: #0f172a;
+            --accent: #38bdf8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --text: #f1f5f9;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        nav {
+            width: 100%;
+            padding: 1rem 0;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+        }
+
+        .nav-content {
+            width: 90%;
+            max-width: 1200px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-weight: 600;
+            font-size: 1.5rem;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 4px 12px;
+            border-radius: 20px;
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid var(--success);
+        }
+
+        main {
+            width: 90%;
+            max-width: 1200px;
+            margin-top: 3rem;
+        }
+
+        .upload-section {
+            background: var(--card);
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            border: 1px dashed rgba(56, 189, 248, 0.3);
+            text-align: center;
+            margin-bottom: 3rem;
+            transition: all 0.3s ease;
+        }
+
+        .upload-section:hover {
+            border-color: var(--accent);
+            background: rgba(15, 23, 42, 0.9);
+        }
+
+        #fileInput { display: none; }
+        .upload-btn {
+            background: var(--accent);
+            color: var(--bg);
+            padding: 0.8rem 2rem;
+            border-radius: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-block;
+            margin-top: 1rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 5rem;
+        }
+
+        .video-card {
+            background: var(--card);
+            border-radius: 1rem;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .video-preview {
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .video-details {
+            padding: 1.5rem;
+        }
+
+        .video-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .pipeline-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 0.5rem;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent);
+            box-shadow: 0 0 10px var(--accent);
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            margin-top: 1rem;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(to right, #38bdf8, #818cf8);
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .tag {
+            font-family: 'Fira Code', monospace;
+            font-size: 0.7rem;
+            opacity: 0.6;
+        }
+
+        .btn-play {
+            width: 100%;
+            padding: 0.8rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: none;
+            color: #fff;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-play:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-play:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-content">
+        <div class="logo">VideoScale.io</div>
+        <div class="status-badge">Engine v1.0 • System Online</div>
+    </div>
+</nav>
+
+<main>
+    <section class="upload-section">
+        <h2>Start New Transcoding Job</h2>
+        <p style="color: #94a3b8">Upload a raw MP4 to trigger the HLS pipeline</p>
+        <label for="fileInput" class="upload-btn">Choose Video File</label>
+        <input type="file" id="fileInput" accept="video/mp4">
+        <div id="uploadStatus" style="margin-top: 1rem; font-size: 0.9rem"></div>
+    </section>
+
+    <div class="grid" id="videoGrid">
+        <!-- Videos will appear here -->
+    </div>
+</main>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const uploadStatus = document.getElementById('uploadStatus');
+    const videoGrid = document.getElementById('videoGrid');
+
+    // Handle Upload
+    fileInput.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        uploadStatus.innerText = "Uploading " + file.name + "...";
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            const res = await fetch('/upload', { method: 'POST', body: formData });
+            const data = await res.json();
+            uploadStatus.innerText = "Job Created: " + data.id;
+            fileInput.value = '';
+            fetchVideos();
+        } catch (err) {
+            uploadStatus.innerText = "Upload Failed: " + err.message;
+        }
+    };
+
+    // Fetch and Refresh List
+    async function fetchVideos() {
+        try {
+            const res = await fetch('/videos');
+            const videos = await res.json();
+            renderVideos(videos);
+        } catch (err) {
+            console.error("Failed to fetch videos", err);
+        }
+    }
+
+    function renderVideos(videos) {
+        videos.reverse().forEach(v => {
+            let card = document.getElementById(`card-${v.id}`);
+            const isCompleted = v.status === 'Completed';
+            
+            if (!card) {
+                // Create new card
+                card = document.createElement('div');
+                card.id = `card-${v.id}`;
+                card.className = 'video-card';
+                videoGrid.prepend(card);
+            }
+
+            // Only update the details, don't touch the preview if it's already playing
+            const previewContainer = card.querySelector('.video-preview');
+            if (!previewContainer || !previewContainer.querySelector('video')) {
+                const previewHtml = isCompleted 
+                    ? `<div class="video-preview" id="player-${v.id}"><span style="color: #10b981">Ready to Play</span></div>`
+                    : `<div class="video-preview" id="player-${v.id}"><span style="color: #64748b">Processing...</span></div>`;
+                
+                if (!previewContainer) {
+                    card.innerHTML = previewHtml + `<div class="video-details"></div>`;
+                } else if (!previewContainer.querySelector('video')) {
+                    previewContainer.innerHTML = isCompleted ? '<span style="color: #10b981">Ready to Play</span>' : '<span style="color: #64748b">Processing...</span>';
+                }
+            }
+
+            const details = card.querySelector('.video-details');
+            details.innerHTML = `
+                <div class="video-name">${v.name}</div>
+                <div class="pipeline-status">
+                    <div class="dot" style="background: ${isCompleted ? '#10b981' : '#38bdf8'}; box-shadow: 0 0 10px ${isCompleted ? '#10b981' : '#38bdf8'}"></div>
+                    <span style="font-size: 0.9rem">${v.status}</span>
+                </div>
+                <div class="tag">ID: ${v.id.substring(0, 8)}... | ${v.created_at}</div>
+                <div class="progress-container">
+                    <div class="progress-bar" style="width: ${v.progress}%; background: ${isCompleted ? '#10b981' : '#38bdf8'}"></div>
+                </div>
+                ${isCompleted && !card.querySelector('video')
+                    ? `<button class="btn-play" onclick="playVideo('${v.url}', 'player-${v.id}')">▶ Watch HLS Stream</button>` 
+                    : isCompleted ? '' : `<button class="btn-play" disabled>Processing Pipeline...</button>`}
+            `;
+        });
+    }
+
+    function playVideo(url, containerId) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = `<video id="active-video" style="width: 100%; height: 100%" controls></video>`;
+        const video = document.getElementById('active-video');
+        
+        if (Hls.isSupported()) {
+            const hls = new Hls();
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+        } else {
+            video.src = url;
+            video.play();
+        }
+    }
+
+    // Polling for updates
+    setInterval(fetchVideos, 2000);
+    fetchVideos();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "basic-streaming-server",
+  "version": "1.0.0",
+  "description": "Project 1 of the Video Streaming Engineering roadmap",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.22.1"
+  }
+}

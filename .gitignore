@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.npm/
+venv/
+env/
+.env
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Docker & Persistence
+minio_data/
+nginx_cache/
+prometheus_data/
+grafana_data/
+
+# Video Artifacts (Large Files)
+# We keep raw samples but ignore processed segments
+**/*.ts
+**/*.m3u8
+projects/03-scalable-backend/processed/
+projects/05-cloud-native-emulator/api/static/temp/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.log
