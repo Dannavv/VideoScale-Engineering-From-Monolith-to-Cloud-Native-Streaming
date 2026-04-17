@@ -7,9 +7,19 @@ Ensure your streaming platform survives even when the network is failing.
 In the real world, "Cloud services" have hiccups. Connections fail, S3 lags, and servers crash. If your code assumes "Everything is fine," it will crash and burn the moment a small lag occurs.
 
 ## 💡 The Solution: Resilience Patterns
-We introduce **Chaos Engineering** (The Villain) and **Self-Healing Logic** (The Hero).
-- **Chaos Monkey (Pumba):** Deliberately slows down our network to 3000ms.
-- **Exponential Backoff:** Our code is trained to wait and retry multiple times before giving up.
+We implement patterns that allow the system to "Heal" while under attack from **Pumba (Chaos Monkey)**.
+
+```mermaid
+graph TD
+    Worker[Worker] -->|Fails| Retry{Retry Logic}
+    Retry -->|Attempt 1| S3
+    Retry -->|Exponential Backoff| S3
+    Retry -->|Max Limit| DeadLetter[Manual Review]
+```
+
+### 🧠 Systems Thinking: Idempotency & Circuit Breakers
+- **Idempotency:** In a distributed system, a task might run twice. We use **Atomic Operations** to ensure that `ProcessVideo(ID: 123)` always produces exactly one output, even if triggered 100 times.
+- **Circuit Breaker:** If S3 is down, retrying 1,000 times as fast as possible will only Ddos your own network. We implement a "Break" to stop requests until the system is healthy again.
 
 ## 🛠️ Implementation Idea
 **The Retry Pattern:**

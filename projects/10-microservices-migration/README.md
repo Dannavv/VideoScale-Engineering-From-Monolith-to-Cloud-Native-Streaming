@@ -8,6 +8,18 @@ In our previous projects, if the API server crashed, everything crashed. The upl
 
 ## 💡 The Solution: Service Isolation
 We break the system into small, specialized apps that communicate over the network.
+
+```mermaid
+graph TD
+    User([User Browser]) -->|HTTP| GW[Nginx API Gateway]
+    GW -->|/auth| AS[Auth Service]
+    GW -->|/catalog| CS[Catalog Service]
+    GW -->|/health| Monitor[Health Dashboard]
+    
+    AS --- Redis[(Redis Event Bus)]
+    CS --- Redis
+```
+
 - **Gateway:** Route traffic based on URLs (e.g., `/auth` -> Auth Service).
 - **Auth Service:** Responsible for only one thing: Identity.
 - **Catalog Service:** Responsible for only one thing: Data.

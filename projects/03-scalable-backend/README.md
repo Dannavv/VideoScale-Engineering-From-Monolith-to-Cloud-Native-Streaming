@@ -7,10 +7,18 @@ Automate the transcoding pipeline. No more manual scripts; the system handles up
 In Project 2, we manually ran FFmpeg. In a real app, users upload videos whenever they want. If we run FFmpeg inside our web request, the browser will "Time Out" because transcoding takes minutes, but web requests should take milliseconds.
 
 ## 💡 The Solution: Asynchronous Processing
-We use **FastAPI's Background Tasks**. When a user uploads a video:
-1. The API immediately says "Got it! Success!"
-2. In the "background," a worker starts the heavy FFmpeg work.
-3. The UI "polls" the server to show a real-time progress bar.
+We decouple the "Response" from the "Work."
+
+```mermaid
+graph LR
+    User[Web Client] -->|Upload| API[FastAPI]
+    API -->|202 Accepted| User
+    API -->|Queue| Worker[Background Worker]
+    Worker -->|FFmpeg| Disk[(Local Storage)]
+    User -->|Poll Status| API
+```
+
+- **Background Tasks:** The API immediately returns a "202 Accepted" status.
 
 ## 🛠️ Implementation Idea
 - **The State Machine:** Every video has a status (`UPLOADED` -> `PROCESSING` -> `READY`).

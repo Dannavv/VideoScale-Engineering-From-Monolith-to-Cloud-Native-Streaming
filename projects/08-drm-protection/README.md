@@ -7,11 +7,23 @@ Protect your premium video content from being played or downloaded by unauthoriz
 In Project 4, we used "Signed URLs." This protected the *link*, but what if a user downloads the video chips (`.ts` files)? They can still watch them offline or share the raw files. 
 
 ## 💡 The Solution: En-Route Encryption
-We use **AES-128 Encryption**. 
-1. The video files are encrypted at the bit-level during transcoding. 
-2. The browser player (HLS.js) sees the manifest and realizes it needs a **Decryption Key**.
-3. The player makes a request to our **Key Server**.
-4. Our server verifies the user's identity and serves the key **only if** they have permission.
+We use **AES-128 Encryption** and a simulated **ClearKey License Server**.
+
+```mermaid
+sequenceDiagram
+    participant P as Player
+    participant S as Static Server
+    participant V as Key Vault
+    P->>S: Get Manifest (.m3u8)
+    S-->>P: Return Manifest with KEY tag
+    P->>V: Request Decryption Key
+    V->>V: Verify Identity/Auth
+    V-->>P: Return AES-128 Key
+    P->>P: Decrypt & Play Chunks
+```
+
+### 🧠 Systems Thinking: Security at the Bit-Level
+- **The Philosophy:** Never trust the client. By encrypting the actual video bits, we ensure that even if a user downloads the entire library, they have nothing but "Digital Noise" unless our Vault grants them a 16-byte key.
 
 ## 🛠️ Implementation Idea
 - **FFmpeg Encryption:** Using `-hls_key_info_file` to tell FFmpeg how to encrypt the segments.

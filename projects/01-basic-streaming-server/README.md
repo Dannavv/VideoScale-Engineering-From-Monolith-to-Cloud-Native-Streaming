@@ -1,11 +1,23 @@
 # Project 1: Basic Video Streaming Server
 
-## 🎯 The goal is to understand the magic of `206 Partial Content`. 
+## 🚀 The Goal
+Understand the "Magic" of the `206 Partial Content` status code and how browsers request specific byte ranges.
 
----
+## 😰 The Problem
+If you serve a 2GB video file via a standard `GET` request, the browser would have to download a significant portion before it could even seek to the middle. If a user only watches 30 seconds, you've wasted massive bandwidth.
 
-## 📖 Mental Model & Theory
-Before starting, read about **HTTP Range Requests** in the [Master Principles Guide](../../docs/principles-and-architecture.md#1-http-range-requests-project-1).
+## 💡 The Solution: HTTP Range Requests
+The server detects a `Range` header and streams only the requested bytes.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as Server
+    B->>S: GET /video.mp4 (Range: bytes=0-1024)
+    S-->>B: 206 Partial Content (Bytes 0-1024)
+    B->>S: GET /video.mp4 (Range: bytes=1024-)
+    S-->>B: 206 Partial Content (Next Chunks)
+```
 
 ---
 

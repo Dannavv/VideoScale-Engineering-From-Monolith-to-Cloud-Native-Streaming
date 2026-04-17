@@ -8,9 +8,23 @@ Even with 3-second segments (Project 7), HLS has a significant delay because the
 
 ## 💡 The Solution: WebRTC (Real-Time Communication)
 WebRTC doesn't use "files." It uses **UDP/SRTP** to send raw video frames directly to the player as soon as they are captured.
-1. **Signaling:** The server and the browser exchange "Handshakes" (SDP) to find each other.
-2. **Hole Punching:** They bypass firewalls (ICE) to establish a direct link.
-3. **Continuous Flow:** Video is sent as a steady stream of packets, not chunks.
+
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant S as Signaling Server
+    participant M as Media Server (Aiortc)
+    B->>S: Send Offer (SDP)
+    S->>M: Forward Offer
+    M->>M: Attach Video Track
+    M->>S: Send Answer (SDP)
+    S-->>B: Forward Answer
+    B<->>M: Direct UDP Media Stream
+```
+
+### 🧠 Systems Thinking: The Challenge of Stateful Scaling
+- **The Problem:** Unlike HLS, where any server can serve any chunk, WebRTC creates a **Long-Lived Stateful Connection**.
+- **The Scalability Wall:** If you have 10,000 users, you need 10,000 open UDP ports and constant CPU usage to encrypt the stream for each individual user. This is why WebRTC is far more expensive to scale than traditional HLS.
 
 ## 🛠️ Implementation Idea
 - **Python Broadcaster (Aiortc):** A server-side peer that reads a video file and "calls" the browser to stream it.

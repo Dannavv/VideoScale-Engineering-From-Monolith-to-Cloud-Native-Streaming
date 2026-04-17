@@ -7,10 +7,20 @@ Build a distributed, decoupled video pipeline using industry-standard architectu
 In Project 3, we used a local disk. In a real cloud environment (AWS/Google Cloud), local disks are "Ephemeral"—they get deleted when the server restarts. To scale globally, we need storage that lives outside our servers.
 
 ## 💡 The Solution: Object Storage & Task Queues
-We replace local paths with the **S3 Architecture**. 
-- **MinIO (S3):** Acts as our global file cabinet.
-- **Redis (SQS):** Acts as the "Job Broker."
-- **Celery (Lambda):** Acts as the "Fleet" of workers that process jobs independently.
+We replace local paths with the **S3 Architecture**, simulating a high-scale environment where storage, compute, and messaging are decoupled.
+
+```mermaid
+graph LR
+    User[Web Client] -->|Upload| S3[(MinIO S3)]
+    S3 -->|PutEvent| Redis[(Redis Broker)]
+    Redis -->|Task| Worker[Celery/Lambda Worker]
+    Worker -->|Read/Write| S3
+```
+
+### 🧠 Systems Thinking: Scaling Object Storage
+In a real production environment (AWS S3), scaling isn't just about disk space; it's about **IOPS Partitioning**. 
+- **The Secret:** S3 scales throughput based on your **Object Key Prefix**.
+- **The Hack:** By hashing your file names (e.g., `af/12/video.mp4`), you distribute the load across multiple S3 partitions, avoiding "Hot Index" issues.
 
 ## 🛠️ Implementation Idea
 **Event-Driven Pipeline:**

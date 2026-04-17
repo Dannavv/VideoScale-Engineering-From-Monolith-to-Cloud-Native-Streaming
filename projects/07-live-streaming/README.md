@@ -6,11 +6,20 @@ Build a professional-grade "Live Studio" that can ingest a camera feed and broad
 ## 😰 The Problem
 VOD (Video on Demand) is easy because the files already exist. In **Live**, every millisecond matters. We can't wait for a whole file to be encoded; we have to "stream" the stream.
 
-## 💡 The Solution: RTMP to HLS Repackaging
-We use **RTMP** (Real-Time Messaging Protocol) because it is incredibly fast for sending video from a camera to a server.
-- The server (Nginx) receives the RTMP feed.
-- It instantly converts the segments into HLS chunks.
-- The browser "pulls" these chunks every 3 seconds.
+## 💡 The Solution: RTMP-to-HLS Repackaging
+We use a high-performance **Nginx-RTMP** module to handle the heavy lifting of real-time stream conversion.
+
+```mermaid
+graph LR
+    OBS[Broadcaster/OBS] -->|RTMP Push| Ingest[Nginx Ingest]
+    Ingest -->|Repackage| HLS[HLS Chunks]
+    HLS -->|Static Serve| CDN[Edge Cache]
+    CDN -->|HLS Pull| Player[User Player]
+```
+
+### 🧠 Systems Thinking: The Latency vs. Load Trade-off
+- **The Dilemma:** To get "Ultra-Low Latency" in HLS, you must reduce the segment size (e.g., from 10s to 1s).
+- **The Consequence:** A 1s segment size means the player requests a new file **every second**. If you have 1 million users, your CDN will be hit with **1 million requests per second**, potentially crashing your infrastructure. This is why "Live" is the hardest part of streaming.
 
 ## 🛠️ Implementation Idea
 **Low-Latency HLS Tuning:**

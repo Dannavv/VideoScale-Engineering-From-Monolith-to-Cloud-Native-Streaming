@@ -7,7 +7,17 @@ Build a streaming experience that works on any device and any network speed, jus
 In Project 1 (Range Requests), we served a single file. If the user is on a slow 3G connection, the 1080p video will buffer forever. If we serve only 480p, Wi-Fi users will be disappointed.
 
 ## 💡 The Solution: HLS (HTTP Live Streaming)
-Instead of serving one big file, we use FFmpeg to chop the video into small 10-second segments (`.ts` files). We create a "Menu" (`.m3u8`) that tells the browser where to find these chunks.
+Instead of serving one big file, we use FFmpeg to chop the video into small 10-second segments (`.ts` files).
+
+```mermaid
+graph TD
+    M[Master Playlist .m3u8] -->|Quality 1| P1[720p Playlist]
+    M -->|Quality 2| P2[480p Playlist]
+    P1 --> S1[Segment_001.ts]
+    P1 --> S2[Segment_002.ts]
+```
+
+- **Manifesting:** The Master Playlist acts as the "Menu."
 
 ## 🛠️ Implementation Idea
 1. **Transcoding:** We use FFmpeg to create multiple versions of the video (e.g., 480p, 720p).

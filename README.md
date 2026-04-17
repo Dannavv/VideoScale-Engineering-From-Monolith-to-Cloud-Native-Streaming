@@ -1,8 +1,20 @@
-# 🎬 Video Streaming Platform: An Engineering Journey
+# 🎬 VideoScale: Scaling from 1k to 100M Users
 
-Welcome to the ultimate engineering guide to building video streaming systems. This repository is structured as a **progressive systems journey**, evolving from a single-machine server to a global-scale distributed architecture.
+This isn't just a collection of streaming projects; it is a **Masterclass in System Evolution.** Most platforms fail not because their code is bad, but because their architecture can't handle the next 10x growth spurt. 
 
-> **Goal:** To build, break, and scale video systems while understanding every bottleneck along the way.
+This repository simulates the journey of a streaming start-up, solving real-world bottlenecks at every phase: from raw file serving to a globally distributed, DRM-protected, microservices-driven ecosystem.
+
+---
+
+## 📊 The Evolution of Scale
+
+| Phase | User Scale | Primary Bottleneck | Solution Implemented |
+| :--- | :--- | :--- | :--- |
+| **1. Scratch** | < 1k | Disk I/O & Seek Times | HTTP Range Requests & HLS Chunking |
+| **2. Monolith** | 10k | CPU Exhaustion (Transcoding) | Async Background Workers & Edge Caching |
+| **3. Cloud** | 100k | Storage & Network Reliability | S3 Object Storage & Chaos Engineering |
+| **4. Elite** | 1M | Latency & Security | WebRTC (Real-time) & AES-128 DRM |
+| **5. Mesh** | 10M+ | Deployment Velocity & Faults | Microservices & API Gateway Orchestration |
 
 ---
 
