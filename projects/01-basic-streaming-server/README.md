@@ -4,7 +4,11 @@
 Understand the "Magic" of the `206 Partial Content` status code and how browsers request specific byte ranges.
 
 ## 😰 The Problem
-If you serve a 2GB video file via a standard `GET` request, the browser would have to download a significant portion before it could even seek to the middle. If a user only watches 30 seconds, you've wasted massive bandwidth.
+If you serve a 2GB video file via a standard `GET` request:
+- Browser must download **~200MB** before it can begin playback (TTFB > 8 seconds on 200Mbps)
+- Seeking to the middle requires downloading **1GB** first
+- If a user only watches 30 seconds of a 2-hour movie, you've wasted **1.97GB of bandwidth** (98.5% waste)
+- At 1,000 concurrent users: **1.97TB wasted bandwidth per session**
 
 ## 💡 The Solution: HTTP Range Requests
 The server detects a `Range` header and streams only the requested bytes.
@@ -19,12 +23,24 @@ sequenceDiagram
     S-->>B: 206 Partial Content (Next Chunks)
 ```
 
+## 😰 The Breaking Point
+At **100+ concurrent users**, a single Node.js server becomes I/O bound:
+- `fs.createReadStream` opens 100 file descriptors simultaneously
+- Disk throughput maxes at ~500 MB/s (HDD) or ~3 GB/s (SSD)
+- At 100 users × 5 Mbps each = **500 Mbps sustained** → saturates a standard NIC
+- **No caching**: Every seek creates a new read stream from disk
+
+## 📊 Performance Baseline
+| Metric | Value |
+|---|---|
+| TTFB (first byte) | < 50ms (local SSD) |
+| Seek latency | 80-200ms (depending on file position) |
+| Max concurrent streams | ~100 (limited by disk I/O) |
+| Bandwidth per user | 3-8 Mbps (depending on quality) |
+
 ---
 
 ## 🚀 How to Run
-
-### Why not just use a standard file download?
-If you serve a 2GB video file via a standard `GET` request, the browser would have to download a significant portion before it could even seek to the middle. If a user only watches 30 seconds, you've wasted massive bandwidth.
 
 ### What we are building:
 A Node.js server that can:

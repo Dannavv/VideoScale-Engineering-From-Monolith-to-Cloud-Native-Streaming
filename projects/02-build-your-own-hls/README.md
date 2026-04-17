@@ -7,17 +7,34 @@ Build a streaming experience that works on any device and any network speed, jus
 In Project 1 (Range Requests), we served a single file. If the user is on a slow 3G connection, the 1080p video will buffer forever. If we serve only 480p, Wi-Fi users will be disappointed.
 
 ## 💡 The Solution: HLS (HTTP Live Streaming)
-Instead of serving one big file, we use FFmpeg to chop the video into small 10-second segments (`.ts` files).
+Instead of serving one big file, we use FFmpeg to chop the video into small **6-second `.ts` segments**.
 
 ```mermaid
 graph TD
-    M[Master Playlist .m3u8] -->|Quality 1| P1[720p Playlist]
-    M -->|Quality 2| P2[480p Playlist]
-    P1 --> S1[Segment_001.ts]
-    P1 --> S2[Segment_002.ts]
+    M["Master Playlist (master.m3u8)"] -->|"BANDWIDTH=5000000"| P1["1080p Playlist (1080p.m3u8)"]
+    M -->|"BANDWIDTH=2800000"| P2["720p Playlist (720p.m3u8)"]
+    M -->|"BANDWIDTH=1400000"| P3["480p Playlist (480p.m3u8)"]
+    P1 --> S1["seg_000.ts (6s, ~3.75MB)"]
+    P1 --> S2["seg_001.ts (6s, ~3.75MB)"]
+    P2 --> S3["seg_000.ts (6s, ~2.1MB)"]
+    P3 --> S4["seg_000.ts (6s, ~1.05MB)"]
 ```
 
-- **Manifesting:** The Master Playlist acts as the "Menu."
+### ABR Bitrate Ladder
+
+| Level | Resolution | Video Bitrate | Audio | Segment Size (6s) | Min Bandwidth Required |
+|---|---|---|---|---|---|
+| 0 | 360p | 800 kbps | 128k AAC | ~0.7 MB | 1.0 Mbps |
+| 1 | 480p | 1,400 kbps | 128k AAC | ~1.1 MB | 1.8 Mbps |
+| 2 | 720p | 2,800 kbps | 128k AAC | ~2.2 MB | 3.5 Mbps |
+| 3 | 1080p | 5,000 kbps | 128k AAC | ~3.8 MB | 6.5 Mbps |
+
+### Client-Side ABR Behavior (HLS.js)
+1. **Startup:** Player always starts at Level 0 (360p) to minimize Time-to-First-Frame
+2. **Ramp-up:** After 3 segments, estimates bandwidth from download speed
+3. **Switching:** If measured bandwidth > 2× current level's requirement → upgrade
+4. **Drop:** If buffer < 5 seconds → immediately drop to lowest sustainable quality
+5. **Stability:** Max 3 quality switches per 60 seconds to prevent "flickering"
 
 ## 🛠️ Implementation Idea
 1. **Transcoding:** We use FFmpeg to create multiple versions of the video (e.g., 480p, 720p).
@@ -25,12 +42,24 @@ graph TD
 3. **Manifesting:** We create a Master Playlist that links everything together.
 
 ## 😰 The Breaking Point
-At **10,000+ users**, the CPU cost of transcoding every video into 5 different qualities (480p, 720p, 1080p, etc.) becomes the biggest expense. If you have 1,000 concurrent uploads, you need a literal "Server Farm" of CPUs just to keep up with the encoding queue.
+At **10,000+ users**, the CPU cost of transcoding becomes the dominant expense:
+
+```
+Per video (2GB, 1080p input):
+  └─► Transcode to 4 qualities: ~8 minutes on 4-core VM
+  └─► Storage: 2GB raw + 3.2GB encoded (4 qualities) = 5.2GB total
+  └─► Storage cost at 10K videos: 52TB × $0.023/GB = $1,196/month
+
+At 1,000 concurrent uploads:
+  └─► Transcode queue: 1,000 jobs ÷ 4 concurrent = 250 minutes wait
+  └─► CPU: 100% sustained for 4+ hours
+  └─► User experience: "Your video will be ready in 4 hours"
+```
 
 ## ⚖️ Architecture Trade-offs
 - **Pro:** Perfect User Experience. The player automatically switches quality, ensuring no buffering.
-- **Con (Storage Explosion):** Storing 5 versions of the same video triples your storage costs (S3 bills).
-- **Con (VTT/Seek Overhead):** More chunks means more network requests. Every "seek" requires the browser to fetch a new manifest, increasing the "Seek Latency."
+- **Con (Storage Explosion):** 4 quality levels = ~2.5× the original file size. At scale, storage costs dominate.
+- **Con (Segment Request Volume):** A 2-hour movie at 6s segments = 1,200 HTTP requests per quality level per viewer.
 
 ---
 

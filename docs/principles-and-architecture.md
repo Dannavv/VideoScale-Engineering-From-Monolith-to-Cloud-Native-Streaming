@@ -3,6 +3,9 @@
 This document serves as the theoretical foundation for the VideoScale platform. It explains the "Why" behind the "How."
 
 👉 **Looking for specific commands? Check the [Mastering FFmpeg Guide](ffmpeg-mastery.md)** 🛠️
+👉 **Deep-dive into HLS/ABR? Read the [Streaming Internals](streaming-internals.md)** 🎬
+👉 **How failures are handled? Read the [Failure Modeling Guide](failure-modeling.md)** 🐜
+👉 **How we operate at scale? Read the [Operations Runbook](operations-runbook.md)** 🔧
 
 ---
 

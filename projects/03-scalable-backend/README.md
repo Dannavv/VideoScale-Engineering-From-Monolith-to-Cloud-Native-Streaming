@@ -21,12 +21,27 @@ graph LR
 - **Background Tasks:** The API immediately returns a "202 Accepted" status.
 
 ## 😰 The Breaking Point
-At **1,000+ users**, the worker and the API share the same CPU. If 50 users upload at once, the API becomes unresponsive (TTFB > 2s) because the CPU is 100% busy with FFmpeg.
+At **1,000+ users**, the monolith begins to crack:
+
+```
+At 50 concurrent uploads:
+  └─► FFmpeg CPU usage: 92% (4-core VM)
+  └─► API response time: 2.1s (target: < 200ms)
+  └─► Memory usage: 3.2GB / 4GB (FFmpeg buffers)
+  └─► TTFB for non-upload users: 1.8s (starved by FFmpeg)
+
+At 200 concurrent uploads:
+  └─► FFmpeg queue depth: 150+ (processing: 4, waiting: 146)
+  └─► API returns 504 Gateway Timeout for 12% of requests
+  └─► Average transcode wait time: 45 minutes
+  └─► User abandonment: ~60% (no one waits 45min)
+```
 
 ## ⚖️ Architecture Trade-offs
 - **Pro:** Extreme simplicity. One `docker-compose.yml` for everything.
-- **Con (The Bottleneck):** No horizontal scaling. You can't add another worker without also adding another API server, which is wasteful.
-- **Con (Reliability):** If the server restarts, all in-progress encodes are lost because state is stored in local memory, not a persistent queue.
+- **Con (CPU Contention):** Worker and API share the same CPU. FFmpeg at `-preset medium` uses 100% of available cores, starving the API.
+- **Con (No Persistence):** If the server restarts, all in-progress encodes are lost. State is in local memory, not a persistent queue.
+- **Con (No Horizontal Scale):** Can't add workers without duplicating the entire API.
 
 ---
 
