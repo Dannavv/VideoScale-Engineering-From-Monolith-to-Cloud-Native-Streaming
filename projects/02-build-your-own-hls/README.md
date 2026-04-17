@@ -1,51 +1,29 @@
-# Project 2: Build Your Own HLS (HTTP Live Streaming)
+# Project 2: DIY HLS & Adaptive Bitrate (ABR)
 
-## 🎯 The Goal
-Understand how modern streaming (YouTube, Netflix) works at scale. Instead of serving one large MP4, we break it into hundreds of small `.ts` chunks and a `.m3u8` playlist.
+## 🚀 The Goal
+Build a streaming experience that works on any device and any network speed, just like YouTube.
 
-### Why HLS over progressive download?
-1. **Adaptive Bitrate (ABR):** The player can switch between 480p and 1080p chunks mid-stream based on network speed.
-2. **CDN Friendly:** Chunks are small, static files easily cached by edge servers.
-3. **Live Streaming:** You can keep appending new chunks to a playlist for live broadcasts.
+## 😰 The Problem
+In Project 1 (Range Requests), we served a single file. If the user is on a slow 3G connection, the 1080p video will buffer forever. If we serve only 480p, Wi-Fi users will be disappointed.
 
----
+## 💡 The Solution: HLS (HTTP Live Streaming)
+Instead of serving one big file, we use FFmpeg to chop the video into small 10-second segments (`.ts` files). We create a "Menu" (`.m3u8`) that tells the browser where to find these chunks.
 
-## 🛠️ The Workflow
-1. **Centralized Source:** Uses the shared `samples/sample1.mp4` file.
-2. **Processing:** The `encode.sh` script uses **FFmpeg** to generate 3 different quality variants (360p, 720p, 1080p).
-3. **Packaging:** High-performance chunking into 2-second segments.
-4. **ABR Manifest:** Generates a Master Playlist that links to all quality levels.
+## 🛠️ Implementation Idea
+1. **Transcoding:** We use FFmpeg to create multiple versions of the video (e.g., 480p, 720p).
+2. **Segmentation:** We chop those versions into small pieces.
+3. **Manifesting:** We create a Master Playlist that links everything together.
 
----
-
-## 🧪 Key Learnings
-1. **The Master Playlist (`.m3u8`):** How it describes bandwidth and resolution to the player.
-2. **Segmenting:** Why we use `.ts` files and how they enable mid-stream quality switching.
-3. **Player Logic:** How `hls.js` monitors network speed and picks the best chunk.
+## 🎓 Key Takeaway
+**ABR (Adaptive Bitrate)** is the heart of modern streaming. It moves the complexity from the server to the "Menu" (Manifest), allowing the client to decide which quality to play based on its own network speed.
 
 ---
 
 ## 🚀 How to Run
+1. **Start the Player:**
+   ```bash
+   npm install && npm start
+   ```
+2. **Open Dashboard:** `http://localhost:3001`
 
-### 1. Encode the Video
-This will create the `output/` folder and generate the fragments.
-```bash
-cd scripts
-./encode.sh
-```
-
-### 2. Install & Start Server
-```bash
-cd ..
-npm install
-npm start
-```
-
-### 3. Play & Observe
-*   Open `http://localhost:3001` on your desktop.
-*   Open `http://<YOUR_LOCAL_IP>:3001` on your phone.
-*   **Watch the "Real-time Metrics"** at the bottom. Try throttling your network in Chrome DevTools (Network tab -> Throttling) to watch the ABR engine switch quality levels live.
-
----
-
-[Back to Roadmap](../../README.md)
+[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#2-adaptive-bitrate-abr--hls-project-2) | [FFmpeg Commands](../../docs/ffmpeg-mastery.md#1-hlsabr-generation-project-2--3)

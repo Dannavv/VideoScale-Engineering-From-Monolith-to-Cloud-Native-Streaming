@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoScale | WebRTC Real-Time</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --webrtc-blue: #00d2ff;
+            --bg: #050505;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: white;
+            font-family: 'Space Grotesk', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 900px;
+            text-align: center;
+        }
+
+        .video-box {
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 2px solid #222;
+            position: relative;
+            aspect-ratio: 16/9;
+            box-shadow: 0 0 50px rgba(0, 210, 255, 0.1);
+        }
+
+        video { width: 100%; height: 100%; object-fit: cover; }
+
+        .latency-badge {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid var(--webrtc-blue);
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: var(--webrtc-blue);
+        }
+
+        .controls { margin-top: 2rem; }
+        
+        button {
+            background: var(--webrtc-blue);
+            color: black;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        button:hover { transform: scale(1.05); }
+
+        .status { margin-bottom: 1rem; color: #666; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div style="margin-bottom: 2rem;">
+        <h1 style="margin: 0;">⚡ WebRTC Ultra-Low Latency</h1>
+        <p style="color: #666;">Real-time Peer-to-Peer Negotiation</p>
+    </div>
+
+    <div class="status" id="status">Ready to connect...</div>
+
+    <div class="video-box">
+        <video id="video" autoplay playsinline></video>
+        <div class="latency-badge">🕒 ESTIMATED LATENCY: <span id="lat">~250ms</span></div>
+    </div>
+
+    <div class="controls">
+        <button onclick="start()">JOIN REAL-TIME FEED</button>
+    </div>
+</div>
+
+<script>
+    const pc = new RTCPeerConnection();
+    const video = document.getElementById('video');
+    const status = document.getElementById('status');
+
+    pc.ontrack = (event) => {
+        status.innerText = "Connection Established. Streaming...";
+        video.srcObject = event.streams[0];
+    };
+
+    async function start() {
+        status.innerText = "Negotiating ICE Candidates...";
+        
+        pc.addTransceiver('video', { direction: 'recvonly' });
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+
+        const response = await fetch('/offer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type })
+        });
+
+        const answer = await response.json();
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+
+        // 📊 ROBUST REAL-TIME STATS TRACKING
+        setInterval(async () => {
+            const stats = await pc.getStats();
+            stats.forEach(report => {
+                // Look for the active network pair
+                if (report.type === 'candidate-pair' && (report.selected || report.nominated || report.state === 'succeeded')) {
+                    const rtt = (report.currentRoundTripTime || report.roundTripTime) * 1000;
+                    if (rtt) {
+                        document.getElementById('lat').innerText = rtt.toFixed(1) + "ms (RTT)";
+                        document.getElementById('lat').style.color = '#3fb950';
+                    }
+                }
+                // Fallback: Show Jitter if RTT is missing
+                if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                    if (!document.getElementById('lat').innerText.includes('RTT')) {
+                        const jitter = report.jitter * 1000;
+                        document.getElementById('lat').innerText = jitter.toFixed(1) + "ms (Jitter)";
+                    }
+                }
+            });
+        }, 1000);
+    }
+</script>
+
+</body>
+</html>

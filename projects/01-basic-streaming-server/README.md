@@ -1,7 +1,15 @@
 # Project 1: Basic Video Streaming Server
 
-## 🎯 The Goal
-Understand **HTTP Range Requests** (`206 Partial Content`). This is the foundation of all web-based video streaming.
+## 🎯 The goal is to understand the magic of `206 Partial Content`. 
+
+---
+
+## 📖 Mental Model & Theory
+Before starting, read about **HTTP Range Requests** in the [Master Principles Guide](../../docs/principles-and-architecture.md#1-http-range-requests-project-1).
+
+---
+
+## 🚀 How to Run
 
 ### Why not just use a standard file download?
 If you serve a 2GB video file via a standard `GET` request, the browser would have to download a significant portion before it could even seek to the middle. If a user only watches 30 seconds, you've wasted massive bandwidth.

@@ -1,0 +1,12 @@
+services:
+  live-server:
+    image: tiangolo/nginx-rtmp
+    ports:
+      - "1935:1935" # RTMP Ingest
+      - "8087:80"   # HTTP Player & Assets
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./static:/usr/share/nginx/html
+    # We use a tmpfs for the HLS segments to avoid disk wear and for speed
+    tmpfs:
+      - /tmp/hls

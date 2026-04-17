@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoScale | Microservices Mesh</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --green: #3fb950;
+            --red: #f85149;
+            --bg: #0d1117;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: white;
+            font-family: 'Space Grotesk', sans-serif;
+            margin: 0;
+            padding: 2rem;
+        }
+
+        .mesh-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .service-card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 4px; height: 100%;
+            background: #333;
+        }
+
+        .service-card.online::before { background: var(--green); }
+        .service-card.offline::before { background: var(--red); }
+
+        .status-badge {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            padding: 2px 8px;
+            border-radius: 20px;
+            background: #333;
+        }
+
+        .online .status-badge { background: rgba(63, 185, 80, 0.1); color: var(--green); }
+        .offline .status-badge { background: rgba(248, 81, 73, 0.1); color: var(--red); }
+
+        .header { text-align: center; margin-bottom: 4rem; }
+        .service-name { font-size: 1.2rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .metadata { color: #8b949e; font-size: 0.9rem; font-family: monospace; }
+        
+        .indicator {
+            width: 10px; height: 10px; border-radius: 50%; display: inline-block;
+            margin-right: 8px;
+            background: #333;
+        }
+        .online .indicator { background: var(--green); box-shadow: 0 0 10px var(--green); }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🌐 Microservices Orchestration</h1>
+    <p style="color: #8b949e">Decoupled Architecture Status Dashboard</p>
+</div>
+
+<div class="mesh-grid">
+    <!-- GATEWAY -->
+    <div class="service-card online">
+        <div class="service-name">API Gateway (Nginx)</div>
+        <div class="status-badge">Primary Entrance</div>
+        <div class="metadata" style="margin-top: 1rem;">
+            PORT: 8010<br>
+            ROLE: Load Balancing & Routing
+        </div>
+    </div>
+
+    <!-- AUTH -->
+    <div id="card-auth" class="service-card offline">
+        <div class="service-name"><span class="indicator"></span>Auth Service</div>
+        <div class="status-badge" id="status-auth">Checking...</div>
+        <div class="metadata" style="margin-top: 1rem;">
+            ENDPOINT: /auth<br>
+            LATENCY: <span id="lat-auth">--</span>
+        </div>
+    </div>
+
+    <!-- CATALOG -->
+    <div id="card-catalog" class="service-card offline">
+        <div class="service-name"><span class="indicator"></span>Catalog Service</div>
+        <div class="status-badge" id="status-catalog">Checking...</div>
+        <div class="metadata" style="margin-top: 1rem;">
+            ENDPOINT: /catalog<br>
+            LATENCY: <span id="lat-catalog">--</span>
+        </div>
+    </div>
+</div>
+
+<script>
+    async function checkHealth(id, path) {
+        const start = Date.now();
+        const card = document.getElementById(`card-${id}`);
+        const status = document.getElementById(`status-${id}`);
+        const lat = document.getElementById(`lat-${id}`);
+
+        try {
+            const resp = await fetch(path);
+            if (resp.ok) {
+                card.className = "service-card online";
+                status.innerText = "HEALTHY";
+                lat.innerText = (Date.now() - start) + "ms";
+            } else {
+                throw new Error();
+            }
+        } catch (e) {
+            card.className = "service-card offline";
+            status.innerText = "UNREACHABLE";
+            lat.innerText = "--";
+        }
+    }
+
+    function poll() {
+        checkHealth('auth', '/auth/health');
+        checkHealth('catalog', '/catalog/health');
+    }
+
+    setInterval(poll, 3000);
+    poll();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,49 @@
+services:
+  # 🗄️ STORAGE (S3)
+  minio:
+    image: minio/minio
+    ports:
+      - "9006:9000"
+      - "9007:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+
+  # 📨 BROKER (SQS)
+  redis:
+    image: redis:alpine
+    ports:
+      - "6381:6379"
+
+  # 🌐 RESILIENT API
+  api:
+    build: ./api
+    ports:
+      - "8006:8000"
+    environment:
+      - S3_ENDPOINT=http://minio:9000
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - minio
+      - redis
+
+  # 🏗️ FAULT-TOLERANT WORKER
+  worker:
+    build: ./worker
+    environment:
+      - S3_ENDPOINT=http://minio:9000
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+      - minio
+
+  # 🐒 CHAOS MONKEY (Pumba)
+  # This container will randomly stop/lag other containers
+  chaos-monkey:
+    image: gaiaadm/pumba
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # We start it in a 'stopped' state or with a dummy command
+    # so the user can trigger chaos manually via UI
+    command: --interval 5m netem --duration 1m delay --time 3000 re2:worker

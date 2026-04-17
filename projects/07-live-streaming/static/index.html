@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoScale | Live Studio</title>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --live-red: #ff0000;
+            --bg: #050505;
+            --accent: #00d2ff;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: white;
+            font-family: 'Space Grotesk', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 1000px;
+            text-align: center;
+        }
+
+        .player-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #333;
+            box-shadow: 0 0 50px rgba(0, 210, 255, 0.1);
+            aspect-ratio: 16/9;
+        }
+
+        video { width: 100%; height: 100%; }
+
+        .live-badge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: var(--live-red);
+            font-weight: 600;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 10;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+
+        .dot { width: 8px; height: 8px; background: white; border-radius: 50%; }
+
+        .header {
+            margin-bottom: 2rem;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin: 0;
+            background: linear-gradient(90deg, #fff, var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .sidebar {
+            position: absolute;
+            right: 40px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 250px;
+            text-align: left;
+            background: rgba(255,255,255,0.05);
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .stat { margin-bottom: 1rem; }
+        .label { color: #888; font-size: 0.8rem; }
+        .value { color: var(--accent); font-weight: 600; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>Live Broadcast Engine</h1>
+        <p style="color: #666">Low-Latency RTMP to HLS Repackaging</p>
+    </div>
+
+    <div class="player-wrapper">
+        <div class="live-badge" id="liveBadge" style="display: none;">
+            <div class="dot"></div> LIVE
+        </div>
+        <video id="video" controls autoplay muted></video>
+    </div>
+
+    <div style="margin-top: 2rem; color: #888; font-size: 0.9rem;">
+        RTMP Ingest: <code style="color: var(--accent)">rtmp://localhost:1935/live/stream1</code>
+    </div>
+</div>
+
+<div class="sidebar">
+    <div class="stat">
+        <div class="label">STATUS</div>
+        <div class="value" id="statusText">WAITING FOR FEED...</div>
+    </div>
+    <div class="stat">
+        <div class="label">PROTOCOLS</div>
+        <div class="value">RTMP ➔ HLS</div>
+    </div>
+    <div class="stat">
+        <div class="label">BUFFERING</div>
+        <div class="value" id="buffer">0.0s</div>
+    </div>
+</div>
+
+<script>
+    const video = document.getElementById('video');
+    const statusText = document.getElementById('statusText');
+    const liveBadge = document.getElementById('liveBadge');
+    // Using stream1 as defined in our simulation and nginx config
+    const streamUrl = '/live/stream1.m3u8';
+
+    function initPlayer() {
+        if (Hls.isSupported()) {
+            const hls = new Hls({
+                enableWorker: true,
+                lowLatencyMode: true,
+                backStep: 0.2
+            });
+            hls.loadSource(streamUrl);
+            hls.attachMedia(video);
+            
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                video.play();
+                statusText.innerText = "STREAM ONLINE";
+                liveBadge.style.display = "flex";
+            });
+
+            hls.on(Hls.Events.ERROR, (event, data) => {
+                if (data.fatal) {
+                    statusText.innerText = "WAITING FOR FEED...";
+                    liveBadge.style.display = "none";
+                }
+            });
+
+            // Update buffer stats
+            setInterval(() => {
+                if (video.buffered.length > 0) {
+                    const buffered = video.buffered.end(video.buffered.length - 1) - video.currentTime;
+                    document.getElementById('buffer').innerText = buffered.toFixed(1) + "s";
+                }
+            }, 1000);
+        }
+    }
+
+    initPlayer();
+</script>
+
+</body>
+</html>

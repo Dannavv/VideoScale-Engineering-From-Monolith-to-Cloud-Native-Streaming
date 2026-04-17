@@ -1,54 +1,30 @@
-# Project 3: Scalable Monolith Backend
+# Project 3: The Scalable Monolith
 
-## 🎯 The Goal
-Transition from manual FFmpeg scripts to an **automated processing pipeline**. In this project, we build the "Brain" of the video platform.
+## 🚀 The Goal
+Automate the transcoding pipeline. No more manual scripts; the system handles upload, encoding, and status tracking automatically.
 
-### Key Evolutionary Step:
-In Project 1 & 2, you manually handled files. In Project 3:
-1. A user uploads a video via an API.
-2. The server saves the "Raw" file to **S3-compatible storage (MinIO)**.
-3. An **asynchronous worker** is triggered to transcode the video into HLS.
-4. The database tracks the status (Pending, Processing, Completed).
+## 😰 The Problem
+In Project 2, we manually ran FFmpeg. In a real app, users upload videos whenever they want. If we run FFmpeg inside our web request, the browser will "Time Out" because transcoding takes minutes, but web requests should take milliseconds.
 
----
+## 💡 The Solution: Asynchronous Processing
+We use **FastAPI's Background Tasks**. When a user uploads a video:
+1. The API immediately says "Got it! Success!"
+2. In the "background," a worker starts the heavy FFmpeg work.
+3. The UI "polls" the server to show a real-time progress bar.
 
-## 🛠️ Architecture
-- **Framework:** FastAPI (Python)
-- **Database:** PostgreSQL (Video Metadata & User info)
-- **Storage:** MinIO (Self-hosted S3)
-- **Queue/Worker:** Celery + Redis (or FastAPI BackgroundTasks for simplicity)
-- **Containerization:** Docker Compose for infrastructure.
+## 🛠️ Implementation Idea
+- **The State Machine:** Every video has a status (`UPLOADED` -> `PROCESSING` -> `READY`).
+- **The Dashboard:** A state-aware UI that updates the status without refreshing the entire page.
 
----
-
-## 🏗️ The System Flow
-1. `POST /upload`: Client sends file.
-2. `Save`: Raw file stored in `raw-uploads` bucket.
-3. `Task`: `transcode_task.delay(video_id)`
-4. `Process`: FFmpeg runs inside a worker container.
-5. `Store`: HLS segments stored in `processed-videos` bucket.
-6. `Query`: `GET /videos` returns a list of playable HLS URLs.
+## 🎓 Key Takeaway
+**Never do heavy lifting in the web thread.** Offload "Hot Tasks" to background workers to keep your application responsive and professional.
 
 ---
 
-## 🚀 Getting Started
-
-### 1. Spin up Infrastructure
-We use Docker to run PostgreSQL and MinIO instantly.
+## 🚀 How to Run
 ```bash
-docker-compose up -d
+docker-compose up -d --build
 ```
+👉 **Dashboard: http://localhost:8000**
 
-### 2. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 3. Run the API
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
----
-
-[Back to Roadmap](../../README.md)
+[Back to Roadmap](../../README.md) | [Read the Theory](../../docs/principles-and-architecture.md#3-asynchronous-transcoding-project-3)
