@@ -11,11 +11,41 @@ We use a high-performance **Nginx-RTMP** module to handle the heavy lifting of r
 
 ```mermaid
 graph LR
-    OBS[Broadcaster/OBS] -->|RTMP Push| Ingest[Nginx Ingest]
-    Ingest -->|Repackage| HLS[HLS Chunks]
-    HLS -->|Static Serve| CDN[Edge Cache]
-    CDN -->|HLS Pull| Player[User Player]
+    OBS[Broadcaster/OBS] -->|"RTMP Push (SYNC, persistent)"| Ingest["Nginx RTMP ⚠️ CPU BOTTLENECK"]
+    Ingest -->|"Real-time Transcode"| HLS["FFmpeg → .ts + .m3u8"]
+    HLS -->|"6s segments written to disk"| Disk[/tmp/hls/stream/]
+    Disk -->|"Nginx Static Serve (SYNC)"| CDN[Edge Cache]
+    CDN -->|"HLS Pull (SYNC)"| Player[HLS.js Player]
+    Player -->|"ABR Switch"| Player
+    
+    style Ingest fill:#ff6b6b,stroke:#333,color:#fff
 ```
+
+### Live Segment Lifecycle (Real-time .ts Generation)
+
+```
+t=0.000s  Camera captures frame → OBS encodes → RTMP packet sent
+t=0.050s  Nginx-RTMP receives packet, buffers in memory
+t=6.000s  6 seconds accumulated → FFmpeg writes segment_047.ts (2.2MB)
+t=6.001s  FFmpeg updates live.m3u8 playlist:
+            #EXTINF:6.0,
+            segment_045.ts    ← 2 segments ago (can be purged)
+            segment_046.ts    ← previous
+            segment_047.ts    ← CURRENT (just created)
+t=6.050s  CDN fetches new .m3u8 (detects new segment)
+t=6.100s  Player downloads segment_047.ts
+t=6.300s  Player decodes + renders → USER SEES THE FRAME
+
+Total glass-to-glass latency: ~6.3 seconds (3 segments × 2s + network)
+```
+
+### Live Streaming Cost at Scale
+
+| Concurrent Viewers | Segments/sec | CDN RPS | Bandwidth | CDN Cost/hour |
+|---|---|---|---|---|
+| 1,000 | 167/s | 10K/min | 2.8 Gbps | $0.50 |
+| 100,000 | 16,700/s | 1M/min | 280 Gbps | $50 |
+| 1,000,000 | 167,000/s | 10M/min | 2.8 Tbps | $500 |
 
 ### 🧠 Systems Thinking: The Latency vs. Load Trade-off
 - **The Dilemma:** To get "Ultra-Low Latency" in HLS, you must reduce the segment size (e.g., from 10s to 1s).

@@ -88,6 +88,121 @@ graph LR
 
 ---
 
+## 🎬 HLS Streaming Lifecycle (Center Stage)
+
+This is a **streaming-first** system. Every architectural decision serves the goal of delivering `.ts` segments to the player as fast and reliably as possible.
+
+### The Life of a Video Segment
+
+```
+1. RAW UPLOAD
+   └─► User uploads sample.mp4 (H.264, 1080p, 2GB)
+
+2. TRANSCODE (FFmpeg)
+   └─► Split into 4 quality ladders: 1080p / 720p / 480p / 360p
+   └─► Each quality encoded with constrained bitrate (-maxrate, -bufsize)
+   └─► Output: 4 streams × ~200 segments each = ~800 .ts files
+
+3. SEGMENT (.ts chunk lifecycle)
+   └─► Each segment = exactly 6 seconds of video
+   └─► Segment naming: stream_0/seg_000.ts, stream_0/seg_001.ts, ...
+   └─► Segment size: 360p=0.7MB, 480p=1.1MB, 720p=2.2MB, 1080p=3.8MB
+   └─► Stored in S3 with hash-prefix keys for IOPS distribution
+
+4. MANIFEST (.m3u8 playlist generation)
+   └─► Master playlist: lists all quality levels with BANDWIDTH tags
+   └─► Media playlist (per quality): ordered list of .ts segment URLs
+   └─► EXT-X-TARGETDURATION: 6 (tells player the max segment length)
+   └─► For DRM: EXT-X-KEY tag points to license server URL
+
+5. ABR SWITCHING (client-side, HLS.js)
+   └─► Player downloads 1st segment at lowest quality (fast startup)
+   └─► Measures download speed: segment_size / download_time
+   └─► If bandwidth > 2× next level requirement → upgrade quality
+   └─► If buffer < 5 seconds → emergency drop to lowest quality
+   └─► Stability guard: max 3 quality switches per 60s
+
+6. BUFFER → DECODE → RENDER
+   └─► Browser maintains 15-30s buffer ahead of playhead
+   └─► Each .ts is demuxed (video + audio separated)
+   └─► H.264 decoded by hardware (GPU) or software (CPU)
+   └─► Frames rendered at display refresh rate (60fps)
+```
+
+### Segment Request Volume at Scale
+
+| Viewers | Segments/sec (6s chunks) | CDN Requests/min | Bandwidth (720p avg) |
+|---|---|---|---|
+| 1,000 | 167/s | 10,000/min | 2.8 Gbps |
+| 100,000 | 16,700/s | 1M/min | 280 Gbps |
+| 1,000,000 | 167,000/s | 10M/min | 2.8 Tbps |
+
+---
+
+## 📈 Operational Baseline (SLIs / SLOs)
+
+| Signal (SLI) | Target (SLO) | Alert Threshold | Measured At |
+|---|---|---|---|
+| Stream startup time | < 2.0s (p95) | > 3.0s | Client-side beacon |
+| Rebuffer ratio | < 0.5% of watch time | > 1.0% | Client-side beacon |
+| API p99 latency | < 200ms | > 500ms | Nginx access log |
+| Transcode queue depth | < 5 jobs | > 20 jobs | Redis LLEN |
+| CDN cache hit ratio | > 95% | < 90% | Nginx $upstream_cache_status |
+| Upload success rate | > 99.5% | < 98% | API 2xx/total ratio |
+| Error rate (5xx) | < 0.1% | > 1.0% | Nginx error log |
+
+### Scaling Triggers
+
+```
+IF   CPU > 70% sustained 5min     → add API container (max 10)
+IF   transcode queue > 20         → add worker container (max 20)
+IF   WebRTC sessions > 500/server → reject new connections (503)
+IF   CDN miss rate > 10%          → pre-warm cache for trending content
+IF   p99 latency > 500ms          → enable request shedding (drop 10% lowest-priority)
+```
+
+### Reliability Patterns (Implemented)
+
+| Pattern | Where | Behavior |
+|---|---|---|
+| Exponential backoff | Transcoder → S3 | 0s → 2s → 4s → 8s → fail to DLQ |
+| Circuit breaker | Worker → MinIO | Open after 5 failures/60s. Probe every 30s |
+| Idempotent workers | Celery tasks | `IF EXISTS output → skip` (no duplicate segments) |
+| Rate limiting | Nginx gateway | 50 req/s per IP, 5 uploads/min per user |
+| Request collapsing | Nginx proxy_cache | `proxy_cache_lock on` (1 origin fetch per segment) |
+
+---
+
+## 💰 Cost at Scale
+
+| Scale | Compute | Storage (S3) | CDN Egress | Total/month | Per-User/month |
+|---|---|---|---|---|---|
+| 1K users | $50 | $12 | $30 | **$92** | $0.092 |
+| 10K users | $200 | $120 | $300 | **$620** | $0.062 |
+| 100K users | $800 | $500 | $3,000 | **$4,300** | $0.043 |
+| 1M users | $5,000 | $2,500 | $23,000 | **$30,500** | $0.031 |
+
+### Where the Money Goes
+
+```
+At 100K users:
+  CDN Egress:   70% of total cost  ← THIS IS THE #1 COST DRIVER
+  Compute:      18% (transcoding + API)
+  Storage:      12% (4 quality levels × all videos)
+
+Cost Optimization Levers:
+  1. CDN cache hit > 95%        → saves 19× origin egress
+  2. Default to 480p (not 1080p) → halves avg bandwidth/user
+  3. Transcode only popular videos → skip 4K for <100 view videos
+  4. Storage tiering:
+     ├─► HOT  (SSD, S3 Standard):   last 7 days of segments
+     ├─► WARM (HDD, S3 IA):         8-90 day old segments
+     └─► COLD (S3 Glacier):         >90 days, restore in 5-12 hours
+  5. Spot instances for workers → 70% compute savings
+```
+
+---
+
 ## 🗺️ The Roadmap
 
 ### 🧠 Phase 0: The Mental Model
