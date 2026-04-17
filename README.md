@@ -6,15 +6,25 @@ This repository simulates the journey of a streaming start-up, solving real-worl
 
 ---
 
-## 📊 The Evolution of Scale
+## 📊 Engineering Constraints & Scale Targets
 
-| Phase | User Scale | Primary Bottleneck | Solution Implemented |
-| :--- | :--- | :--- | :--- |
-| **1. Scratch** | < 1k | Disk I/O & Seek Times | HTTP Range Requests & HLS Chunking |
-| **2. Monolith** | 10k | CPU Exhaustion (Transcoding) | Async Background Workers & Edge Caching |
-| **3. Cloud** | 100k | Storage & Network Reliability | S3 Object Storage & Chaos Engineering |
-| **4. Elite** | 1M | Latency & Security | WebRTC (Real-time) & AES-128 DRM |
-| **5. Mesh** | 10M+ | Deployment Velocity & Faults | Microservices & API Gateway Orchestration |
+| Phase | Targeted RPS | Concurrency | Latency Budget | Storage Strategy |
+| :--- | :--- | :--- | :--- | :--- |
+| **1. Scratch** | 10 | 10 Users | < 500ms (TTFB) | Local Disk (RAW) |
+| **2. Monolith** | 100 | 1k Users | < 200ms (HLS) | Local Disk (Chunked) |
+| **3. Cloud** | 1,000 | 100k Users | < 500ms (Cold) | S3 Object Partitions |
+| **4. Elite** | 5,000 | 500k Users | < 50ms (RTC) | Distributed Cache |
+| **5. Mesh** | 10,000+ | 1M+ Users | Service-Specific | Multi-Region Mesh |
+
+---
+
+## 🔄 The Life of a Packet (End-to-End)
+
+### 📤 The Upload Flow (Ingest)
+`Broadcaster (OBS) → [RTMP Push] → Nginx Ingest → [Event Trigger] → Task Queue (Redis) → Transcoder (FFmpeg) → [Segmenting] → Object Storage (S3)`
+
+### 📥 The Playback Flow (Egress)
+`User Player → [GET Manifest] → API Gateway → [Edge Cache Check] → S3 Fallback → [Signed URL Validation] → Packet Stream → Decoder → Screen`
 
 ---
 
@@ -24,6 +34,7 @@ This repository simulates the journey of a streaming start-up, solving real-worl
 Before code, understand the pipeline: `Capture → Encode → Store → Process → Deliver → Play → Scale`.
 - [**Master Principles & Architecture Guide**](docs/principles-and-architecture.md) 📕
 - [**Mastering FFmpeg: The Field Manual**](docs/ffmpeg-mastery.md) 🛠️
+- [**System Failure & Resilience Modeling**](docs/failure-modeling.md) 🐜
 
 ### 🧩 Phase 1: From Scratch (Raw Basics) 
 - **Project 1:** [Basic Video Streaming Server](projects/01-basic-streaming-server/README.md) - Mastery of `206 Partial Content` and Range Requests.

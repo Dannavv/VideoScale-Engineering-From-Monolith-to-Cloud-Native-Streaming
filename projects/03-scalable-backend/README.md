@@ -20,12 +20,13 @@ graph LR
 
 - **Background Tasks:** The API immediately returns a "202 Accepted" status.
 
-## 🛠️ Implementation Idea
-- **The State Machine:** Every video has a status (`UPLOADED` -> `PROCESSING` -> `READY`).
-- **The Dashboard:** A state-aware UI that updates the status without refreshing the entire page.
+## 😰 The Breaking Point
+At **1,000+ users**, the worker and the API share the same CPU. If 50 users upload at once, the API becomes unresponsive (TTFB > 2s) because the CPU is 100% busy with FFmpeg.
 
-## 🎓 Key Takeaway
-**Never do heavy lifting in the web thread.** Offload "Hot Tasks" to background workers to keep your application responsive and professional.
+## ⚖️ Architecture Trade-offs
+- **Pro:** Extreme simplicity. One `docker-compose.yml` for everything.
+- **Con (The Bottleneck):** No horizontal scaling. You can't add another worker without also adding another API server, which is wasteful.
+- **Con (Reliability):** If the server restarts, all in-progress encodes are lost because state is stored in local memory, not a persistent queue.
 
 ---
 

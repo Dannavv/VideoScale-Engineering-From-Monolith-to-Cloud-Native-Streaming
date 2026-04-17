@@ -24,8 +24,13 @@ graph TD
 2. **Segmentation:** We chop those versions into small pieces.
 3. **Manifesting:** We create a Master Playlist that links everything together.
 
-## 🎓 Key Takeaway
-**ABR (Adaptive Bitrate)** is the heart of modern streaming. It moves the complexity from the server to the "Menu" (Manifest), allowing the client to decide which quality to play based on its own network speed.
+## 😰 The Breaking Point
+At **10,000+ users**, the CPU cost of transcoding every video into 5 different qualities (480p, 720p, 1080p, etc.) becomes the biggest expense. If you have 1,000 concurrent uploads, you need a literal "Server Farm" of CPUs just to keep up with the encoding queue.
+
+## ⚖️ Architecture Trade-offs
+- **Pro:** Perfect User Experience. The player automatically switches quality, ensuring no buffering.
+- **Con (Storage Explosion):** Storing 5 versions of the same video triples your storage costs (S3 bills).
+- **Con (VTT/Seek Overhead):** More chunks means more network requests. Every "seek" requires the browser to fetch a new manifest, increasing the "Seek Latency."
 
 ---
 

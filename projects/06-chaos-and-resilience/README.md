@@ -17,9 +17,13 @@ graph TD
     Retry -->|Max Limit| DeadLetter[Manual Review]
 ```
 
-### 🧠 Systems Thinking: Idempotency & Circuit Breakers
-- **Idempotency:** In a distributed system, a task might run twice. We use **Atomic Operations** to ensure that `ProcessVideo(ID: 123)` always produces exactly one output, even if triggered 100 times.
-- **Circuit Breaker:** If S3 is down, retrying 1,000 times as fast as possible will only Ddos your own network. We implement a "Break" to stop requests until the system is healthy again.
+## 😰 The Breaking Point
+At **100,000+ users**, the "Retry Storm" becomes your biggest enemy. If a small network glitch causes 100,000 users to "Retry" their requests at the exact same millisecond, it acts like a self-inflicted Ddos attack, crashing your database or storage.
+
+## ⚖️ Architecture Trade-offs
+- **Pro:** Extreme Uptime. Even if a worker crashes, the video eventually gets processed.
+- **Con (The Complexity Tax):** You can no longer use simple `INSERT` statements. You must write **Idempotent** code (logic that can run 10 times without breaking things), which is significantly harder to debug.
+- **Con (Eventual Consistency):** A user might upload a video and see "Processing" for 3 extra seconds while the retry-loop finishes, sacrificing "Instant Gratification" for "System Safety."
 
 ## 🛠️ Implementation Idea
 **The Retry Pattern:**

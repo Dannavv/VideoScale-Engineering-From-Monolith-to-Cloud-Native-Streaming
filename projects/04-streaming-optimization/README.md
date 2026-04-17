@@ -23,12 +23,13 @@ graph LR
 - **Edge Caching (Nginx):** Fetches once, serves millions.
 - **HMAC Signed URLs:** Cryptographic tokens ensure only authorized users can trigger a "Fetch."
 
-## 🛠️ Implementation Idea
-- **Proxy Cache:** Configuring Nginx `proxy_cache_path` to handle `.ts` and `.m3u8` files differently.
-- **HMAC Verification:** A small Python middleware that validates the `token` and `expires` timestamp.
+## 😰 The Breaking Point
+At **100,000+ users**, "Origin Caching" inside Nginx still puts a heavy load on your single server's disk and network interface. If 50,000 people from Japan try to watch a video stored in a US-East server, the network latency (~200ms) will make the player feel sluggish, even if it's "cached."
 
-## 🎓 Key Takeaway
-**Cache at the Edge, Secure at the Origin.** Caching saves money; Signed URLs protect your business model.
+## ⚖️ Architecture Trade-offs
+- **Pro:** Massive Offload. Nginx handles 99% of the traffic, keeping the FastAPI origin quiet and safe.
+- **Con (The Purge Problem):** If you update a video, but the edge has it cached for 1 hour, your users will see old content. Managing **Cache Invalidation** globally is one of the hardest problems in systems engineering.
+- **Con (Token Revocation):** Signed URLs are great, but if a token is stolen, it's valid until it expires. Revoking a single token across a global CDN is complex and expensive.
 
 ---
 

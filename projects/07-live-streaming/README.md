@@ -21,9 +21,13 @@ graph LR
 - **The Dilemma:** To get "Ultra-Low Latency" in HLS, you must reduce the segment size (e.g., from 10s to 1s).
 - **The Consequence:** A 1s segment size means the player requests a new file **every second**. If you have 1 million users, your CDN will be hit with **1 million requests per second**, potentially crashing your infrastructure. This is why "Live" is the hardest part of streaming.
 
-## 🛠️ Implementation Idea
-**Low-Latency HLS Tuning:**
-We configure Nginx to use 3-second segments instead of the standard 10-second ones. This reduces the "Broadcast Delay" from 30 seconds down to under 10 seconds.
+## 😰 The Breaking Point
+At **1,000 concurrent broadcasters**, the Nginx CPU becomes a massive bottleneck. Every "RTMP Push" requires a real-time process to spawn. If the server is doing 1,000 conversions at once, the "Live Delay" will spike from 3s to 60s, making the stream "Not Live" anymore.
+
+## ⚖️ Architecture Trade-offs
+- **Pro:** Low Latency (HLS). By using 2s segments, we get an elite live experience.
+- **Con (The CDN Storm):** 2s segments mean every user fetches a file every 2 seconds. A single viral stream with 10M viewers will generate **5 Million Requests Per Second**, which can overwhelm even global CDNs.
+- **Con (Ingest Complexity):** RTMP is an older protocol; it doesn't support modern codecs like AV1 naturally, limiting our future quality upgrades.
 
 ## 🎓 Key Takeaway
 **Ingest with RTMP, Distribute with HLS.** RTMP is the industry standard for "pushing" the news; HLS is the standard for "viewing" it.

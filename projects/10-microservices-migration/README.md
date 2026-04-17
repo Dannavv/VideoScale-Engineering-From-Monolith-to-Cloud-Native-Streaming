@@ -3,11 +3,17 @@
 ## 🚀 The Goal
 Transition from a "Distributed Monolith" to a truly decoupled **Microservices Ecosystem**.
 
-## 😰 The Problem
-In our previous projects, if the API server crashed, everything crashed. The upload failed, the player failed, and the catalog was unreachable. In a global system, one team's bug shouldn't take down the entire company.
+## 😰 The Breaking Point
+At **10M+ users**, the "Scalable Monolith" from Phase 2/3 begins to crack. While we have background workers, the **Deployment Velocity** slows down. Every time we want to update the "Auth" logic, we have to restart the "Transcoder" and "Catalog" logic because they are in the same code binary.
 
 ## 💡 The Solution: Service Isolation
-We break the system into small, specialized apps that communicate over the network.
+We break the system into small, specialized apps (Auth, Catalog) that communicate over the network.
+
+## ⚖️ Architecture Trade-offs
+Moving to Microservices isn't "better"—it's a choice with heavy costs:
+- **Pro:** Team A can update the Auth service without touching Team B's Catalog service.
+- **Con (Network Latency):** A single user request now involves 3+ network hops (Gateway -> Auth -> DB).
+- **Con (Observability):** Debugging a "500 Internal Server Error" now requires **Distributed Tracing** because the error could be in any of the 4 isolated containers.
 
 ```mermaid
 graph TD

@@ -22,11 +22,13 @@ In a real production environment (AWS S3), scaling isn't just about disk space; 
 - **The Secret:** S3 scales throughput based on your **Object Key Prefix**.
 - **The Hack:** By hashing your file names (e.g., `af/12/video.mp4`), you distribute the load across multiple S3 partitions, avoiding "Hot Index" issues.
 
-## 🛠️ Implementation Idea
-**Event-Driven Pipeline:**
-1. User uploads to **S3 Ingest Bucket**.
-2. API puts a "Job Ticket" into the **Redis Queue**.
-3. A **Worker** wakes up, downloads from S3, transcodes, and uploads back to the **S3 Egress Bucket**.
+## 😰 The Breaking Point
+At **100,000+ users**, "Local Disk" storage becomes a liability. If the server crashes, the disk is wiped (ephemeral storage). If you scale to 5 servers, they can't "share" a single local folder easily.
+
+## ⚖️ Architecture Trade-offs
+- **Pro:** Infinite Scale. S3 storage is virtually bottomless and highly durable (99.999999999%).
+- **Con (Complexity):** You can no longer use simple `open('file.mp4')`. You must handle **S3 Latency** and asynchronous upload callbacks.
+- **Con (Consistency):** S3 is "Eventually Consistent." If you upload a video and immediately try to read it, you might get a `404` for a few milliseconds while the data propagates.
 
 ## 🎓 Key Takeaway
 **Decouple your compute from your storage.** By using S3 and Queues, your system becomes "Stateless," meaning you can destroy and recreate your servers without losing a single video.
