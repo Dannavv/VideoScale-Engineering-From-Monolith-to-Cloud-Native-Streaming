@@ -26,6 +26,8 @@ COST:
   Total infrastructure:       ~$2.5M/month
 ```
 
+![Global Network Topology Research](../assets/global_network_topology.png)
+
 ---
 
 ## What Breaks at 100M
@@ -87,27 +89,7 @@ WHY THIS MATTERS:
 
 ### Multi-CDN Strategy
 
-```mermaid
-graph TD
-    DNS[GeoDNS Router] --> HC{Health Check}
-    HC -->|Healthy| Primary
-    HC -->|3 consecutive 5xx| Failover
-    
-    subgraph "North America"
-        Primary[Cloudflare Primary]
-        Failover[Akamai Failover]
-    end
-    
-    subgraph "Europe"
-        EUPrimary[Akamai Primary]
-        EUFailover[CloudFront Failover]
-    end
-    
-    subgraph "Asia-Pacific"
-        APPrimary[CloudFront Primary]
-        APFailover[Cloudflare Failover]
-    end
-```
+![Multi-CDN Routing Strategy](../assets/multi_cdn_routing.png)
 
 **Routing Logic:**
 

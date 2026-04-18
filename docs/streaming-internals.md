@@ -31,6 +31,8 @@ RAW UPLOAD (2GB MP4, H.264, 1080p, 60fps)
    Master Playlist (.m3u8) Links All Qualities
 ```
 
+![HLS Architecture Blueprint](../assets/hls_architecture_blueprint.png)
+
 ### The FFmpeg Command (Exact)
 
 ```bash
@@ -90,6 +92,8 @@ The player (HLS.js) continuously measures **3 signals** to decide which quality 
 │  OUTPUT: Next segment quality level (0-3)         │
 └──────────────────────────────────────────────────┘
 ```
+
+![ABR Research Schematic](../assets/abr_research_schematic.png)
 
 ### ABR Quality Map
 

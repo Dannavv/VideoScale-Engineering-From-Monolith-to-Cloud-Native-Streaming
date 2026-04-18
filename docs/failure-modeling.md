@@ -113,10 +113,11 @@ WITH MITIGATION (Circuit Breaker - 3 states):
     └─► Workers write to local disk as fallback
     └─► Timer: 30 seconds
   
-  HALF-OPEN (testing):
     └─► Allow 1 probe request to S3
     └─► If success → move to CLOSED
     └─► If failure → move back to OPEN for another 30s
+
+![Failure Recovery Flowchart](../assets/failure_recovery_flowchart.png)
 ```
 
 ### F5: Service Crash → Stateless Recovery

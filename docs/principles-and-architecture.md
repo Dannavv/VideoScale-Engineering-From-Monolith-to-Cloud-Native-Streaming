@@ -9,6 +9,8 @@ This document serves as the theoretical foundation for the VideoScale platform. 
 
 ---
 
+![HLS Architecture Blueprint](../assets/hls_architecture_blueprint.png)
+
 ## 🧩 Phase 1: The Foundation
 ### 1. HTTP Range Requests (Project 1)
 - **Concept:** Instead of downloading a whole 1GB file, the browser asks for bytes 0-1024.

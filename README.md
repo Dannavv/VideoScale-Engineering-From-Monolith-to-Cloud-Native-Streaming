@@ -50,19 +50,9 @@ Everything in this repository serves **one goal**: get video segments from stora
 
 ### How HLS Works (End-to-End)
 
-```mermaid
-graph LR
-    Upload["1. Upload (MP4)"] --> Transcode["2. Transcode (FFmpeg)"]
-    Transcode --> Segment["3. Segment (.ts chunks)"]
-    Segment --> Manifest["4. Manifest (.m3u8)"]
-    Manifest --> CDN["5. CDN Edge Cache"]
-    CDN --> ABR["6. ABR Switch (HLS.js)"]
-    ABR --> Buffer["7. Buffer → Decode → Render"]
-    
-    style Segment fill:#4CAF50,stroke:#333,color:#fff
-    style Manifest fill:#4CAF50,stroke:#333,color:#fff
-    style ABR fill:#2196F3,stroke:#333,color:#fff
-```
+![Streaming Pipeline Pipeline](assets/streaming_pipeline.png)
+
+![HLS Architecture Blueprint](assets/hls_architecture_blueprint.png)
 
 ### Step-by-Step: The Life of a Video
 
@@ -124,36 +114,11 @@ graph LR
 
 ### Upload Flow (Ingest)
 
-```mermaid
-graph LR
-    Client[Client App] -->|"POST /upload (SYNC)"| GW[API Gateway]
-    GW -->|"Auth Check (SYNC)"| Auth[Auth Service]
-    GW -->|"Store Raw (SYNC)"| S3[(Object Storage)]
-    S3 -.->|"Event (ASYNC)"| Queue[Redis Task Queue]
-    Queue -.->|"Dequeue (ASYNC)"| Worker["Transcoder ⚠️ BOTTLENECK"]
-    Worker -->|"FFmpeg → .ts + .m3u8"| Worker
-    Worker -->|"PUT segments"| S3cdn[(CDN Storage)]
-    Worker -->|"Update status"| DB[(Catalog DB)]
-    
-    style Worker fill:#ff6b6b,stroke:#333,color:#fff
-```
+![Video Ingest Flow Schematic](assets/upload_flow.png)
 
 ### Playback Flow (Egress)
 
-```mermaid
-graph LR
-    Player[HLS.js Player] -->|"GET master.m3u8 (SYNC)"| CDN[CDN Edge]
-    CDN -->|"Cache HIT → 0ms"| Player
-    CDN -->|"Cache MISS"| Origin["Origin ⚠️ PROTECT THIS"]
-    Origin -->|"Signed URL Check"| Auth[Auth Service]
-    Origin -->|"Fetch .ts"| S3[(Object Storage)]
-    S3 -->|"seg_047.ts"| Origin
-    Origin -->|"Cache + Respond"| CDN
-    CDN -->|"seg_047.ts → buffer"| Player
-    Player -->|"ABR: measure bw → pick quality"| Player
-    
-    style Origin fill:#ff6b6b,stroke:#333,color:#fff
-```
+![Video Playback Egress Flow Schematic](assets/playback_flow.png)
 
 > **Solid lines** = synchronous (user waits). **Dashed lines** = asynchronous (background).
 
@@ -238,6 +203,8 @@ At **100 million monthly active users** with **10 million concurrent streams**, 
 | Geographic latency | **Geo-routing** | Route53/Cloudflare geo-DNS sends users to nearest edge. Latency-based routing |
 | Viral traffic spike | **Edge transcoding** | Pre-position popular content at edge. Transcode at edge for <1s startup |
 | Regional outage | **Failover regions** | Active-active in 3 regions. If us-east-1 fails, eu-west-1 absorbs traffic in <60s |
+
+![Global Network Topology](assets/global_network_topology.png)
 
 ---
 

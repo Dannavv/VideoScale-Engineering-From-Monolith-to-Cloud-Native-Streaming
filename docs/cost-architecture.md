@@ -16,6 +16,8 @@ Cost is the silent architect. At every scale inflection, **cost constraints driv
 | 1M users | $5,000 | $2,500 | $23,000 | $3,000 | $1,200 | **$34,700** | $0.035 |
 | 10M users | $30,000 | $15,000 | $180,000 | $20,000 | $8,000 | **$253,000** | $0.025 |
 
+![Cost Distribution Research Chart](../assets/cost_analysis_chart.png)
+
 ### Cost Distribution (at 1M users)
 
 ```
